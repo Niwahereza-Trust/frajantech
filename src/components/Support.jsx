@@ -9,11 +9,11 @@ export default function Support() {
         <div className="support-actions">
           <a
             className="btn btn-primary"
-            href="https://api.whatsapp.com/send?phone=256786774925&text=Hello%20Frajan%20Tech%20customer%20care%2C%20I%20need%20support."
+            href="https://api.whatsapp.com/send?phone=256782782461&text=Hello%20Frajan%20Tech%20customer%20care%2C%20I%20need%20support."
           >
             Chat on WhatsApp →
           </a>
-          <a className="btn btn-ghost" href="tel:25678278246">Call 25678278246</a>
+          <a className="btn btn-ghost" href="tel:256782782461">Call 256782782461</a>
         </div>
       </div>
 
