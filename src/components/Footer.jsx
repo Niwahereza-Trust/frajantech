@@ -26,7 +26,7 @@ export default function Footer() {
 
       <div className="wrap footer-bottom">
         <span>© {new Date().getFullYear()} Frajan Tech Unlimited. All rights reserved.</span>
-        <a href="https://api.whatsapp.com/send?phone=256786774925&text=Hello%20Frajan%20Tech%20customer%20care%2C%20I%20need%20help.">
+        <a href="https://api.whatsapp.com/send?phone=256782782461&text=Hello%20Frajan%20Tech%20customer%20care%2C%20I%20need%20help.">
           WhatsApp
         </a>
       </div>
