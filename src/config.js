@@ -1,7 +1,7 @@
 // While developing locally against the backend in /frajantech-backend,
 // this points at its default port. Swap to your deployed URL when you
 // host it (e.g. https://api.frajantechunlimited.com).
-export const API_BASE = 'http://localhost:4000'
+export const API_BASE = 'https://backend-8pdd.onrender.com'
 
 // The modal POSTs JSON shaped like:
 // {
