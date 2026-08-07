@@ -13,7 +13,7 @@ export default function Support() {
           >
             Chat on WhatsApp →
           </a>
-          <a className="btn btn-ghost" href="tel:0200907902">Call 0200-907902</a>
+          <a className="btn btn-ghost" href="tel:25678278246">Call 25678278246</a>
         </div>
       </div>
 
