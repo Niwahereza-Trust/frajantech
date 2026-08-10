@@ -3,7 +3,7 @@
   publish = "dist"
 
 [build.environment]
-  SECRETS_SCAN_OMIT_KEYS = "WHATSAPP_NOTIFY_NUMBER,CORS_ORIGIN"
+  SECRETS_SCAN_OMIT_KEYS = "WHATSAPP_NOTIFY_NUMBER,CORS_ORIGIN,PORT"
 
 [[redirects]]
   from = "/*"
