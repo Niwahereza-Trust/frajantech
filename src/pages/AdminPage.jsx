@@ -31,17 +31,23 @@ export default function AdminPage() {
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [flyers, setFlyers] = useState([])
+  const [flyerFile, setFlyerFile] = useState(null)
+  const [flyerCaption, setFlyerCaption] = useState('')
+  const [uploadingFlyer, setUploadingFlyer] = useState(false)
 
   const load = useCallback(async (t) => {
     setLoading(true)
     setError('')
     try {
-      const [reqData, agentData] = await Promise.all([
+      const [reqData, agentData, flyerData] = await Promise.all([
         apiFetch('/api/requests', { token: t }),
         apiFetch('/api/agents', { token: t }),
+        apiFetch('/api/flyers/all', { token: t }),
       ])
       setRequests(reqData)
       setAgents(agentData)
+      setFlyers(flyerData)
       setAuthed(true)
     } catch (err) {
       if (err.message === 'unauthorized') {
@@ -83,6 +89,52 @@ export default function AdminPage() {
       load(token)
     } catch {
       setError('That action failed. Please try again.')
+    }
+  }
+
+  const handleFlyerUpload = async (e) => {
+    e.preventDefault()
+    if (!flyerFile) return
+    setUploadingFlyer(true)
+    setError('')
+    try {
+      const formData = new FormData()
+      formData.append('image', flyerFile)
+      formData.append('caption', flyerCaption)
+
+      const res = await fetch(`${API_BASE}/api/flyers`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token },
+        body: formData,
+      })
+      if (res.status === 401) throw new Error('unauthorized')
+      if (!res.ok) throw new Error('upload-failed')
+
+      setFlyerFile(null)
+      setFlyerCaption('')
+      load(token)
+    } catch {
+      setError('Flyer upload failed. Please try again.')
+    } finally {
+      setUploadingFlyer(false)
+    }
+  }
+
+  const handleFlyerToggle = async (id, published) => {
+    try {
+      await apiFetch(`/api/flyers/${id}`, { method: 'PATCH', token, body: { published: !published } })
+      load(token)
+    } catch {
+      setError('That action failed. Please try again.')
+    }
+  }
+
+  const handleFlyerDelete = async (id) => {
+    try {
+      await apiFetch(`/api/flyers/${id}`, { method: 'DELETE', token })
+      load(token)
+    } catch {
+      setError('Delete failed. Please try again.')
     }
   }
 
@@ -156,6 +208,50 @@ export default function AdminPage() {
           <AgentsTable rows={otherAgents} />
         </section>
       )}
+
+      <section>
+        <h2>Flyers</h2>
+        <form onSubmit={handleFlyerUpload} className="flyer-upload-form">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setFlyerFile(e.target.files[0])}
+          />
+          <input
+            type="text"
+            placeholder="Caption (optional)"
+            value={flyerCaption}
+            onChange={(e) => setFlyerCaption(e.target.value)}
+          />
+          <button className="btn btn-primary" type="submit" disabled={!flyerFile || uploadingFlyer}>
+            {uploadingFlyer ? 'Uploading…' : 'Upload flyer'}
+          </button>
+        </form>
+
+        {flyers.length === 0 ? (
+          <p className="admin-empty">No flyers yet.</p>
+        ) : (
+          <div className="flyer-grid">
+            {flyers.map((f) => (
+              <div key={f.id} className="flyer-card">
+                <img src={f.image_url} alt={f.caption || 'Flyer'} />
+                <p>{f.caption || '—'}</p>
+                <span className={`admin-badge admin-badge-${f.published ? 'approved' : 'pending'}`}>
+                  {f.published ? 'Published' : 'Unpublished'}
+                </span>
+                <div className="admin-actions">
+                  <button className="admin-icon-btn" onClick={() => handleFlyerToggle(f.id, f.published)}>
+                    {f.published ? 'Unpublish' : 'Publish'}
+                  </button>
+                  <button className="admin-icon-btn admin-reject" onClick={() => handleFlyerDelete(f.id)}>
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <style>{adminStyles}</style>
     </div>
@@ -350,4 +446,46 @@ const adminStyles = `
   }
   .admin-approve:hover { border-color: var(--live); color: var(--live); }
   .admin-reject:hover { border-color: #DC2626; color: #DC2626; }
+  .flyer-upload-form {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .flyer-upload-form input[type="text"] {
+    border: 1px solid var(--slate-line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: var(--ink);
+    color: var(--paper);
+    flex: 1;
+    min-width: 180px;
+  }
+  .flyer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+  }
+  .flyer-card {
+    background: var(--indigo);
+    border: 1px solid var(--slate-line);
+    border-radius: var(--radius);
+    padding: 12px;
+  }
+  .flyer-card img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .flyer-card p { color: var(--paper); font-size: 13px; margin-bottom: 8px; }
+  .flyer-card .admin-actions { margin-top: 8px; }
+  .flyer-card .admin-icon-btn {
+    width: auto;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--paper);
+  }
 `
