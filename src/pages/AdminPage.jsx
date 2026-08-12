@@ -35,6 +35,10 @@ export default function AdminPage() {
   const [flyerFile, setFlyerFile] = useState(null)
   const [flyerCaption, setFlyerCaption] = useState('')
   const [uploadingFlyer, setUploadingFlyer] = useState(false)
+  const [importFile, setImportFile] = useState(null)
+  const [importPreview, setImportPreview] = useState(null) // { rows, skippedLines }
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null) // { inserted, failed }
 
   const load = useCallback(async (t) => {
     setLoading(true)
@@ -136,6 +140,73 @@ export default function AdminPage() {
     } catch {
       setError('Delete failed. Please try again.')
     }
+  }
+
+  const handlePreviewImport = async (e) => {
+    e.preventDefault()
+    if (!importFile) return
+    setImporting(true)
+    setError('')
+    setImportResult(null)
+    try {
+      const formData = new FormData()
+      formData.append('pdf', importFile)
+
+      const res = await fetch(`${API_BASE}/api/clients/import/preview`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token },
+        body: formData,
+      })
+      if (res.status === 401) throw new Error('unauthorized')
+      if (!res.ok) throw new Error('preview-failed')
+
+      const data = await res.json()
+      setImportPreview(data)
+    } catch {
+      setError('Could not read that PDF. Please check the file and try again.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const updatePreviewRow = (index, field, value) => {
+    setImportPreview((prev) => {
+      const rows = [...prev.rows]
+      rows[index] = { ...rows[index], [field]: value }
+      return { ...prev, rows }
+    })
+  }
+
+  const removePreviewRow = (index) => {
+    setImportPreview((prev) => ({
+      ...prev,
+      rows: prev.rows.filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleConfirmImport = async () => {
+    if (!importPreview?.rows?.length) return
+    setImporting(true)
+    setError('')
+    try {
+      const result = await apiFetch('/api/clients/import/confirm', {
+        method: 'POST',
+        token,
+        body: { rows: importPreview.rows },
+      })
+      setImportResult(result)
+      setImportPreview(null)
+      setImportFile(null)
+    } catch {
+      setError('Import failed. Please try again.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const cancelImport = () => {
+    setImportPreview(null)
+    setImportFile(null)
   }
 
   if (!authed) {
@@ -249,6 +320,103 @@ export default function AdminPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2>Import clients from PDF</h2>
+
+        {!importPreview && (
+          <form onSubmit={handlePreviewImport} className="import-upload-form">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setImportFile(e.target.files[0])}
+            />
+            <button className="btn btn-primary" type="submit" disabled={!importFile || importing}>
+              {importing ? 'Reading…' : 'Preview import'}
+            </button>
+          </form>
+        )}
+
+        {importResult && (
+          <p className="admin-status-ok">
+            Imported {importResult.inserted.length} client{importResult.inserted.length === 1 ? '' : 's'}.
+            {importResult.failed.length > 0 && ` ${importResult.failed.length} row(s) failed.`}
+          </p>
+        )}
+
+        {importPreview && (
+          <div className="import-preview">
+            <p className="admin-empty">
+              {importPreview.rows.length} row{importPreview.rows.length === 1 ? '' : 's'} found.
+              Review before confirming — you can edit or remove any row.
+            </p>
+
+            {importPreview.skippedLines?.length > 0 && (
+              <p className="admin-error">
+                {importPreview.skippedLines.length} line(s) in the PDF couldn't be parsed and were skipped.
+              </p>
+            )}
+
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {importPreview.rows.map((row, i) => (
+                  <tr key={i} className={row.valid ? '' : 'import-row-invalid'}>
+                    <td>
+                      <input
+                        className="import-cell-input"
+                        value={row.full_name}
+                        onChange={(e) => updatePreviewRow(i, 'full_name', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="import-cell-input"
+                        value={row.airtel_number}
+                        onChange={(e) => updatePreviewRow(i, 'airtel_number', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="import-cell-input"
+                        value={row.package}
+                        onChange={(e) => updatePreviewRow(i, 'package', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="import-cell-input"
+                        value={row.status}
+                        onChange={(e) => updatePreviewRow(i, 'status', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <button className="admin-icon-btn admin-reject" onClick={() => removePreviewRow(i)} aria-label="Remove row">
+                        <X size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="import-actions">
+              <button className="btn btn-ghost" onClick={cancelImport} disabled={importing}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleConfirmImport}
+                disabled={importing || importPreview.rows.length === 0}
+              >
+                {importing ? 'Importing…' : `Confirm import (${importPreview.rows.length})`}
+              </button>
+            </div>
           </div>
         )}
       </section>
@@ -487,5 +655,31 @@ const adminStyles = `
     padding: 0 10px;
     font-size: 12px;
     color: var(--paper);
+  }
+  .import-upload-form {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .admin-status-ok { color: var(--live); font-size: 13px; margin-top: 8px; }
+  .import-preview { margin-top: 16px; }
+  .import-preview .admin-table { margin-top: 12px; }
+  .import-row-invalid { background: rgba(220, 38, 38, 0.06); }
+  .import-cell-input {
+    border: 1px solid var(--slate-line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 13px;
+    background: var(--ink);
+    color: var(--paper);
+    width: 100%;
+    min-width: 100px;
+  }
+  .import-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
   }
 `
