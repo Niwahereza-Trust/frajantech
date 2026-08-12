@@ -47,12 +47,14 @@ const emptyForm = { fullName: '', airtelNumber: '', package: '', note: '' }
 export default function ConnectModal() {
   const { isOpen, type, close, setType } = useConnectModal()
   const [form, setForm] = useState(emptyForm)
-  const [status, setStatus] = useState('idle') // idle | sending | sent | error
+  const [status, setStatus] = useState('idle') // idle | sending | error | limited
+  const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     if (isOpen) {
       setForm(emptyForm)
       setStatus('idle')
+      setErrorMessage('')
     }
   }, [isOpen, type])
 
@@ -72,16 +74,28 @@ export default function ConnectModal() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setStatus('sending')
+    setErrorMessage('')
     try {
       const res = await fetch(CONNECT_API_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, ...form }),
       })
+
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}))
+        setStatus('limited')
+        setErrorMessage(data.error || 'A request from this number was already submitted recently. Please wait before submitting another.')
+        return
+      }
+
       if (!res.ok) throw new Error('Request failed')
-      setStatus('sent')
+
+      // Success — close the modal immediately, no lingering confirmation screen.
+      close()
     } catch (err) {
       setStatus('error')
+      setErrorMessage('Something went wrong. Please try again or contact support directly.')
     }
   }
 
@@ -174,8 +188,8 @@ export default function ConnectModal() {
               {status === 'sending' ? 'Sending…' : 'Submit request'} <ArrowRight size={16} />
             </button>
 
-            {status === 'sent' && <p className="cm-status cm-status-ok">Request sent — we'll follow up shortly.</p>}
-            {status === 'error' && <p className="cm-status cm-status-err">Something went wrong. Please try again or contact support directly.</p>}
+            {status === 'limited' && <p className="cm-status cm-status-err">{errorMessage}</p>}
+            {status === 'error' && <p className="cm-status cm-status-err">{errorMessage}</p>}
           </form>
         </div>
       </div>
