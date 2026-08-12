@@ -1,25 +1,59 @@
-import { useState } from 'react'
-
-const SLIDES = [
-  'Official company updates and posters will appear here.',
-]
+import { useEffect, useState } from 'react'
+import { API_BASE } from '../config.js'
 
 export default function Announcements() {
+  const [flyers, setFlyers] = useState([])
   const [index, setIndex] = useState(0)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_BASE}/api/flyers`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled) setFlyers(Array.isArray(data) ? data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setFlyers([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const go = (dir) => {
-    setIndex((i) => (i + dir + SLIDES.length) % SLIDES.length)
+    if (flyers.length === 0) return
+    setIndex((i) => (i + dir + flyers.length) % flyers.length)
   }
+
+  if (loading) return null
+
+  const hasFlyers = flyers.length > 0
+  const current = hasFlyers ? flyers[index] : null
 
   return (
     <div className="announce">
       <div className="wrap announce-inner">
-        <button aria-label="Previous announcement" onClick={() => go(-1)}>‹</button>
+        <button aria-label="Previous announcement" onClick={() => go(-1)} disabled={!hasFlyers}>‹</button>
+
         <div className="announce-body">
-          <span className="tag">Official CEO Announcement</span>
-          <p>{SLIDES[index]}</p>
+          {hasFlyers ? (
+            <>
+              <img src={current.image_url} alt={current.caption || 'Announcement'} className="announce-image" />
+              {current.caption && <p>{current.caption}</p>}
+            </>
+          ) : (
+            <>
+              <span className="tag">Official CEO Announcement</span>
+              <p>Official company updates and posters will appear here.</p>
+            </>
+          )}
         </div>
-        <button aria-label="Next announcement" onClick={() => go(1)}>›</button>
+
+        <button aria-label="Next announcement" onClick={() => go(1)} disabled={!hasFlyers}>›</button>
       </div>
 
       <style>{`
@@ -43,6 +77,7 @@ export default function Announcements() {
           flex-shrink: 0;
         }
         .announce button:hover { border-color: var(--signal); color: var(--signal); }
+        .announce button:disabled { opacity: 0.4; cursor: default; }
         .announce-body { flex: 1; text-align: center; }
         .tag {
           display: block;
@@ -54,6 +89,13 @@ export default function Announcements() {
           margin-bottom: 4px;
         }
         .announce-body p { font-size: 13px; color: var(--slate); }
+        .announce-image {
+          max-height: 160px;
+          max-width: 100%;
+          border-radius: 8px;
+          margin: 0 auto 8px;
+          display: block;
+        }
       `}</style>
     </div>
   )
