@@ -363,7 +363,7 @@ export default function AdminPage() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th></th>
+                  <th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Registered</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -395,6 +395,14 @@ export default function AdminPage() {
                         className="import-cell-input"
                         value={row.status}
                         onChange={(e) => updatePreviewRow(i, 'status', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="date"
+                        className="import-cell-input"
+                        value={row.registered_at || ''}
+                        onChange={(e) => updatePreviewRow(i, 'registered_at', e.target.value)}
                       />
                     </td>
                     <td>
