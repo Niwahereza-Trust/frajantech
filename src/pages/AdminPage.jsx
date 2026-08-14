@@ -440,7 +440,7 @@ function RequestsTable({ rows, onAction, showActions }) {
     <table className="admin-table">
       <thead>
         <tr>
-          <th>Ref</th><th>Type</th><th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Created</th>
+          <th>Ref</th><th>Type</th><th>Name</th><th>Airtel</th><th>Package</th><th>Proof</th><th>Status</th><th>Created</th>
           {showActions && <th></th>}
         </tr>
       </thead>
@@ -452,6 +452,15 @@ function RequestsTable({ rows, onAction, showActions }) {
             <td>{r.full_name}</td>
             <td>{r.airtel_number}</td>
             <td>{r.package || '—'}</td>
+            <td>
+              {r.payment_proof_url ? (
+                <a href={r.payment_proof_url} target="_blank" rel="noreferrer">
+                  <img src={r.payment_proof_url} alt="Payment proof" className="proof-thumb" />
+                </a>
+              ) : (
+                '—'
+              )}
+            </td>
             <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
             <td>{fmtDate(r.created_at)}</td>
             {showActions && (
@@ -689,5 +698,13 @@ const adminStyles = `
     justify-content: flex-end;
     gap: 10px;
     margin-top: 16px;
+  }
+  .proof-thumb {
+    width: 44px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--slate-line);
+    display: block;
   }
 `
