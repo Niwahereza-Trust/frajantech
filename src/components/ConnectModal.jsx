@@ -47,12 +47,14 @@ const emptyForm = { fullName: '', airtelNumber: '', package: '', note: '' }
 export default function ConnectModal() {
   const { isOpen, type, close, setType } = useConnectModal()
   const [form, setForm] = useState(emptyForm)
+  const [proofFile, setProofFile] = useState(null)
   const [status, setStatus] = useState('idle') // idle | sending | error | limited
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     if (isOpen) {
       setForm(emptyForm)
+      setProofFile(null)
       setStatus('idle')
       setErrorMessage('')
     }
@@ -73,13 +75,27 @@ export default function ConnectModal() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (!proofFile) {
+      setStatus('error')
+      setErrorMessage('Please attach a screenshot of your payment before submitting.')
+      return
+    }
+
     setStatus('sending')
     setErrorMessage('')
     try {
+      const formData = new FormData()
+      formData.append('type', type)
+      formData.append('fullName', form.fullName)
+      formData.append('airtelNumber', form.airtelNumber)
+      formData.append('package', form.package)
+      formData.append('note', form.note)
+      formData.append('paymentProof', proofFile)
+
       const res = await fetch(CONNECT_API_ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, ...form }),
+        body: formData,
       })
 
       if (res.status === 429) {
@@ -89,7 +105,10 @@ export default function ConnectModal() {
         return
       }
 
-      if (!res.ok) throw new Error('Request failed')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Request failed')
+      }
 
       // Success — close the modal immediately, no lingering confirmation screen.
       close()
@@ -184,7 +203,19 @@ export default function ConnectModal() {
               />
             </div>
 
-            <button className="btn btn-primary cm-submit" type="submit" disabled={status === 'sending'}>
+            <div className="cm-field">
+              <label htmlFor="cm-proof">Proof of payment (screenshot) — required</label>
+              <input
+                id="cm-proof"
+                type="file"
+                accept="image/*"
+                required
+                onChange={(e) => setProofFile(e.target.files[0] || null)}
+              />
+              {proofFile && <span className="cm-file-name">{proofFile.name}</span>}
+            </div>
+
+            <button className="btn btn-primary cm-submit" type="submit" disabled={status === 'sending' || !proofFile}>
               {status === 'sending' ? 'Sending…' : 'Submit request'} <ArrowRight size={16} />
             </button>
 
@@ -323,6 +354,7 @@ export default function ConnectModal() {
         .cm-status { font-size: 13px; }
         .cm-status-ok { color: var(--live); }
         .cm-status-err { color: #DC2626; }
+        .cm-file-name { font-size: 12px; color: var(--slate); }
 
         @media (max-width: 720px) {
           .cm-grid { grid-template-columns: 1fr; }
