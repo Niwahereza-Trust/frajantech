@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Check, X, RefreshCw, Eye, EyeOff } from 'lucide-react'
+import { Check, X, RefreshCw, Eye, EyeOff, Pencil, Pause } from 'lucide-react'
 import { API_BASE } from '../config.js'
 
 const TOKEN_KEY = 'ft_admin_token'
@@ -29,6 +29,7 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false)
   const [requests, setRequests] = useState([])
   const [agents, setAgents] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [flyers, setFlyers] = useState([])
@@ -36,22 +37,24 @@ export default function AdminPage() {
   const [flyerCaption, setFlyerCaption] = useState('')
   const [uploadingFlyer, setUploadingFlyer] = useState(false)
   const [importFile, setImportFile] = useState(null)
-  const [importPreview, setImportPreview] = useState(null) // { rows, skippedLines }
+  const [importPreview, setImportPreview] = useState(null)
   const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState(null) // { inserted, failed }
+  const [importResult, setImportResult] = useState(null)
 
   const load = useCallback(async (t) => {
     setLoading(true)
     setError('')
     try {
-      const [reqData, agentData, flyerData] = await Promise.all([
+      const [reqData, agentData, flyerData, clientData] = await Promise.all([
         apiFetch('/api/requests', { token: t }),
         apiFetch('/api/agents', { token: t }),
         apiFetch('/api/flyers/all', { token: t }),
+        apiFetch('/api/clients', { token: t }),
       ])
       setRequests(reqData)
       setAgents(agentData)
       setFlyers(flyerData)
+      setClients(clientData)
       setAuthed(true)
     } catch (err) {
       if (err.message === 'unauthorized') {
@@ -78,24 +81,44 @@ export default function AdminPage() {
     setToken(tokenInput.trim())
   }
 
-  const handleRequestAction = async (id, action) => {
+  // Generic CRUD helpers shared across Requests / Agents / Clients
+  const handleStatusAction = async (basePath, id, action) => {
     try {
-      await apiFetch(`/api/requests/${id}/${action}`, { method: 'PATCH', token })
+      await apiFetch(`${basePath}/${id}/${action}`, { method: 'PATCH', token })
       load(token)
     } catch {
       setError('That action failed. Please try again.')
     }
   }
 
-  const handleAgentAction = async (id, action) => {
+  const handleEdit = async (basePath, id, patch) => {
     try {
-      await apiFetch(`/api/agents/${id}/${action}`, { method: 'PATCH', token })
+      await apiFetch(`${basePath}/${id}`, { method: 'PATCH', token, body: patch })
       load(token)
     } catch {
-      setError('That action failed. Please try again.')
+      setError('Edit failed. Please try again.')
     }
   }
 
+  const handleDelete = async (basePath, id) => {
+    try {
+      await apiFetch(`${basePath}/${id}`, { method: 'DELETE', token })
+      load(token)
+    } catch {
+      setError('Delete failed. Please try again.')
+    }
+  }
+
+  const handleBulkDelete = async (basePath, ids) => {
+    try {
+      await Promise.all(ids.map((id) => apiFetch(`${basePath}/${id}`, { method: 'DELETE', token })))
+      load(token)
+    } catch {
+      setError('Some deletions failed. Please refresh and try again.')
+    }
+  }
+
+  // Flyers
   const handleFlyerUpload = async (e) => {
     e.preventDefault()
     if (!flyerFile) return
@@ -133,6 +156,15 @@ export default function AdminPage() {
     }
   }
 
+  const handleFlyerEditCaption = async (id, caption) => {
+    try {
+      await apiFetch(`/api/flyers/${id}`, { method: 'PATCH', token, body: { caption } })
+      load(token)
+    } catch {
+      setError('Edit failed. Please try again.')
+    }
+  }
+
   const handleFlyerDelete = async (id) => {
     try {
       await apiFetch(`/api/flyers/${id}`, { method: 'DELETE', token })
@@ -142,6 +174,16 @@ export default function AdminPage() {
     }
   }
 
+  const handleFlyerBulkDelete = async (ids) => {
+    try {
+      await Promise.all(ids.map((id) => apiFetch(`/api/flyers/${id}`, { method: 'DELETE', token })))
+      load(token)
+    } catch {
+      setError('Some deletions failed. Please refresh and try again.')
+    }
+  }
+
+  // PDF import
   const handlePreviewImport = async (e) => {
     e.preventDefault()
     if (!importFile) return
@@ -197,6 +239,7 @@ export default function AdminPage() {
       setImportResult(result)
       setImportPreview(null)
       setImportFile(null)
+      load(token)
     } catch {
       setError('Import failed. Please try again.')
     } finally {
@@ -240,10 +283,51 @@ export default function AdminPage() {
     )
   }
 
-  const pendingRequests = requests.filter((r) => r.status === 'pending')
-  const otherRequests = requests.filter((r) => r.status !== 'pending')
-  const pendingAgents = agents.filter((a) => a.status === 'pending')
-  const otherAgents = agents.filter((a) => a.status !== 'pending')
+  const pendingRequests = requests.filter((r) => r.status === 'pending' || r.status === 'on_hold')
+  const otherRequests = requests.filter((r) => r.status !== 'pending' && r.status !== 'on_hold')
+  const pendingAgents = agents.filter((a) => a.status === 'pending' || a.status === 'on_hold')
+  const otherAgents = agents.filter((a) => a.status !== 'pending' && a.status !== 'on_hold')
+
+  const requestColumns = [
+    { key: 'reference_code', label: 'Ref' },
+    { key: 'type', label: 'Type' },
+    { key: 'full_name', label: 'Name', editable: true },
+    { key: 'airtel_number', label: 'Airtel', editable: true },
+    { key: 'package', label: 'Package', editable: true },
+    {
+      key: 'proof',
+      label: 'Proof',
+      render: (r) =>
+        r.payment_proof_url ? (
+          <a href={r.payment_proof_url} target="_blank" rel="noreferrer">
+            <img src={r.payment_proof_url} alt="Payment proof" className="proof-thumb" />
+          </a>
+        ) : (
+          '—'
+        ),
+    },
+    { key: 'status', label: 'Status', render: (r) => <span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span> },
+    { key: 'created_at', label: 'Created', render: (r) => fmtDate(r.created_at) },
+  ]
+
+  const agentColumns = [
+    { key: 'full_name', label: 'Name', editable: true },
+    { key: 'phone_number', label: 'Phone', editable: true },
+    { key: 'email', label: 'Email', editable: true },
+    { key: 'district', label: 'District', editable: true },
+    { key: 'status', label: 'Status', render: (a) => <span className={`admin-badge admin-badge-${a.status}`}>{a.status}</span> },
+    { key: 'created_at', label: 'Applied', render: (a) => fmtDate(a.created_at) },
+  ]
+
+  const clientColumns = [
+    { key: 'client_ref', label: 'Ref' },
+    { key: 'full_name', label: 'Name', editable: true },
+    { key: 'airtel_number', label: 'Airtel', editable: true },
+    { key: 'package', label: 'Package', editable: true },
+    { key: 'status', label: 'Status', editable: true },
+    { key: 'registered_at', label: 'Registered', render: (c) => fmtDate(c.registered_at) },
+    { key: 'expires_at', label: 'Expires', render: (c) => fmtDate(c.expires_at) },
+  ]
 
   return (
     <div className="admin-page">
@@ -258,27 +342,97 @@ export default function AdminPage() {
 
       <section>
         <h2>Pending requests ({pendingRequests.length})</h2>
-        <RequestsTable rows={pendingRequests} onAction={handleRequestAction} showActions />
+        <ManagedTable
+          rows={pendingRequests}
+          columns={requestColumns}
+          getId={(r) => r.id}
+          onEdit={(id, patch) => handleEdit('/api/requests', id, patch)}
+          onDelete={(id) => handleDelete('/api/requests', id)}
+          onBulkDelete={(ids) => handleBulkDelete('/api/requests', ids)}
+          extraActions={(r) => (
+            <>
+              <button className="admin-icon-btn admin-approve" onClick={() => handleStatusAction('/api/requests', r.id, 'approve')} aria-label="Approve">
+                <Check size={16} />
+              </button>
+              <button className="admin-icon-btn admin-reject" onClick={() => handleStatusAction('/api/requests', r.id, 'reject')} aria-label="Reject">
+                <X size={16} />
+              </button>
+              {r.status === 'pending' && (
+                <button className="admin-icon-btn" onClick={() => handleStatusAction('/api/requests', r.id, 'hold')} aria-label="Suspend">
+                  <Pause size={16} />
+                </button>
+              )}
+            </>
+          )}
+        />
       </section>
 
       {otherRequests.length > 0 && (
         <section>
           <h2>Past requests</h2>
-          <RequestsTable rows={otherRequests} />
+          <ManagedTable
+            rows={otherRequests}
+            columns={requestColumns}
+            getId={(r) => r.id}
+            onEdit={(id, patch) => handleEdit('/api/requests', id, patch)}
+            onDelete={(id) => handleDelete('/api/requests', id)}
+            onBulkDelete={(ids) => handleBulkDelete('/api/requests', ids)}
+          />
         </section>
       )}
 
       <section>
         <h2>Pending agent applications ({pendingAgents.length})</h2>
-        <AgentsTable rows={pendingAgents} onAction={handleAgentAction} showActions />
+        <ManagedTable
+          rows={pendingAgents}
+          columns={agentColumns}
+          getId={(a) => a.id}
+          onEdit={(id, patch) => handleEdit('/api/agents', id, patch)}
+          onDelete={(id) => handleDelete('/api/agents', id)}
+          onBulkDelete={(ids) => handleBulkDelete('/api/agents', ids)}
+          extraActions={(a) => (
+            <>
+              <button className="admin-icon-btn admin-approve" onClick={() => handleStatusAction('/api/agents', a.id, 'approve')} aria-label="Approve">
+                <Check size={16} />
+              </button>
+              <button className="admin-icon-btn admin-reject" onClick={() => handleStatusAction('/api/agents', a.id, 'reject')} aria-label="Reject">
+                <X size={16} />
+              </button>
+              {a.status === 'pending' && (
+                <button className="admin-icon-btn" onClick={() => handleStatusAction('/api/agents', a.id, 'hold')} aria-label="Suspend">
+                  <Pause size={16} />
+                </button>
+              )}
+            </>
+          )}
+        />
       </section>
 
       {otherAgents.length > 0 && (
         <section>
           <h2>Past agent applications</h2>
-          <AgentsTable rows={otherAgents} />
+          <ManagedTable
+            rows={otherAgents}
+            columns={agentColumns}
+            getId={(a) => a.id}
+            onEdit={(id, patch) => handleEdit('/api/agents', id, patch)}
+            onDelete={(id) => handleDelete('/api/agents', id)}
+            onBulkDelete={(ids) => handleBulkDelete('/api/agents', ids)}
+          />
         </section>
       )}
+
+      <section>
+        <h2>Clients ({clients.length})</h2>
+        <ManagedTable
+          rows={clients}
+          columns={clientColumns}
+          getId={(c) => c.id}
+          onEdit={(id, patch) => handleEdit('/api/clients', id, patch)}
+          onDelete={(id) => handleDelete('/api/clients', id)}
+          onBulkDelete={(ids) => handleBulkDelete('/api/clients', ids)}
+        />
+      </section>
 
       <section>
         <h2>Flyers</h2>
@@ -299,29 +453,13 @@ export default function AdminPage() {
           </button>
         </form>
 
-        {flyers.length === 0 ? (
-          <p className="admin-empty">No flyers yet.</p>
-        ) : (
-          <div className="flyer-grid">
-            {flyers.map((f) => (
-              <div key={f.id} className="flyer-card">
-                <img src={f.image_url} alt={f.caption || 'Flyer'} />
-                <p>{f.caption || '—'}</p>
-                <span className={`admin-badge admin-badge-${f.published ? 'approved' : 'pending'}`}>
-                  {f.published ? 'Published' : 'Unpublished'}
-                </span>
-                <div className="admin-actions">
-                  <button className="admin-icon-btn" onClick={() => handleFlyerToggle(f.id, f.published)}>
-                    {f.published ? 'Unpublish' : 'Publish'}
-                  </button>
-                  <button className="admin-icon-btn admin-reject" onClick={() => handleFlyerDelete(f.id)}>
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <FlyerGrid
+          flyers={flyers}
+          onToggle={handleFlyerToggle}
+          onEditCaption={handleFlyerEditCaption}
+          onDelete={handleFlyerDelete}
+          onBulkDelete={handleFlyerBulkDelete}
+        />
       </section>
 
       <section>
@@ -434,85 +572,213 @@ export default function AdminPage() {
   )
 }
 
-function RequestsTable({ rows, onAction, showActions }) {
+// Reusable table: select-all checkboxes, inline edit, per-row delete, bulk delete.
+function ManagedTable({ rows, columns, getId, onEdit, onDelete, onBulkDelete, extraActions }) {
+  const [selected, setSelected] = useState(new Set())
+  const [editingId, setEditingId] = useState(null)
+  const [draft, setDraft] = useState({})
+
   if (rows.length === 0) return <p className="admin-empty">Nothing here.</p>
+
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(getId(r)))
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(rows.map(getId)))
+  }
+  const toggleOne = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const startEdit = (row) => {
+    setEditingId(getId(row))
+    setDraft({ ...row })
+  }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setDraft({})
+  }
+  const saveEdit = async () => {
+    await onEdit(editingId, draft)
+    cancelEdit()
+  }
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return
+    if (!window.confirm(`Delete ${selected.size} selected row(s)? This cannot be undone.`)) return
+    await onBulkDelete([...selected])
+    setSelected(new Set())
+  }
+  const handleDeleteOne = async (id) => {
+    if (!window.confirm('Delete this row? This cannot be undone.')) return
+    await onDelete(id)
+  }
+
   return (
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>Ref</th><th>Type</th><th>Name</th><th>Airtel</th><th>Package</th><th>Proof</th><th>Status</th><th>Created</th>
-          {showActions && <th></th>}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.id}>
-            <td>{r.reference_code}</td>
-            <td>{r.type}</td>
-            <td>{r.full_name}</td>
-            <td>{r.airtel_number}</td>
-            <td>{r.package || '—'}</td>
-            <td>
-              {r.payment_proof_url ? (
-                <a href={r.payment_proof_url} target="_blank" rel="noreferrer">
-                  <img src={r.payment_proof_url} alt="Payment proof" className="proof-thumb" />
-                </a>
-              ) : (
-                '—'
-              )}
-            </td>
-            <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
-            <td>{fmtDate(r.created_at)}</td>
-            {showActions && (
-              <td className="admin-actions">
-                <button className="admin-icon-btn admin-approve" onClick={() => onAction(r.id, 'approve')} aria-label="Approve">
-                  <Check size={16} />
-                </button>
-                <button className="admin-icon-btn admin-reject" onClick={() => onAction(r.id, 'reject')} aria-label="Reject">
-                  <X size={16} />
-                </button>
-              </td>
-            )}
+    <div>
+      {selected.size > 0 && (
+        <div className="bulk-bar">
+          <span>{selected.size} selected</span>
+          <button className="btn btn-ghost" onClick={handleBulkDelete}>Delete selected</button>
+        </div>
+      )}
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all" /></th>
+            {columns.map((c) => (
+              <th key={c.key}>{c.label}</th>
+            ))}
+            <th></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const id = getId(row)
+            const isEditing = editingId === id
+            return (
+              <tr key={id}>
+                <td>
+                  <input type="checkbox" checked={selected.has(id)} onChange={() => toggleOne(id)} aria-label="Select row" />
+                </td>
+                {columns.map((c) => (
+                  <td key={c.key}>
+                    {isEditing && c.editable ? (
+                      <input
+                        className="import-cell-input"
+                        value={draft[c.key] ?? ''}
+                        onChange={(e) => setDraft((d) => ({ ...d, [c.key]: e.target.value }))}
+                      />
+                    ) : c.render ? (
+                      c.render(row)
+                    ) : (
+                      row[c.key] ?? '—'
+                    )}
+                  </td>
+                ))}
+                <td className="admin-actions">
+                  {isEditing ? (
+                    <>
+                      <button className="admin-icon-btn admin-approve" onClick={saveEdit} aria-label="Save">
+                        <Check size={16} />
+                      </button>
+                      <button className="admin-icon-btn" onClick={cancelEdit} aria-label="Cancel">
+                        <X size={16} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {extraActions && extraActions(row)}
+                      <button className="admin-icon-btn" onClick={() => startEdit(row)} aria-label="Edit">
+                        <Pencil size={16} />
+                      </button>
+                      <button className="admin-icon-btn admin-reject" onClick={() => handleDeleteOne(id)} aria-label="Delete">
+                        <X size={16} />
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
-function AgentsTable({ rows, onAction, showActions }) {
-  if (rows.length === 0) return <p className="admin-empty">Nothing here.</p>
+function FlyerGrid({ flyers, onToggle, onEditCaption, onDelete, onBulkDelete }) {
+  const [selected, setSelected] = useState(new Set())
+  const [editingId, setEditingId] = useState(null)
+  const [captionDraft, setCaptionDraft] = useState('')
+
+  if (flyers.length === 0) return <p className="admin-empty">No flyers yet.</p>
+
+  const toggleOne = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const allSelected = flyers.length > 0 && flyers.every((f) => selected.has(f.id))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(flyers.map((f) => f.id)))
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return
+    if (!window.confirm(`Delete ${selected.size} selected flyer(s)? This cannot be undone.`)) return
+    await onBulkDelete([...selected])
+    setSelected(new Set())
+  }
+  const handleDeleteOne = async (id) => {
+    if (!window.confirm('Delete this flyer? This cannot be undone.')) return
+    await onDelete(id)
+  }
+  const startEdit = (f) => {
+    setEditingId(f.id)
+    setCaptionDraft(f.caption || '')
+  }
+  const saveCaption = async (id) => {
+    await onEditCaption(id, captionDraft)
+    setEditingId(null)
+  }
+
   return (
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>Name</th><th>Phone</th><th>Email</th><th>District</th><th>Status</th><th>Applied</th>
-          {showActions && <th></th>}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((a) => (
-          <tr key={a.id}>
-            <td>{a.full_name}</td>
-            <td>{a.phone_number}</td>
-            <td>{a.email}</td>
-            <td>{a.district || '—'}</td>
-            <td><span className={`admin-badge admin-badge-${a.status}`}>{a.status}</span></td>
-            <td>{fmtDate(a.created_at)}</td>
-            {showActions && (
-              <td className="admin-actions">
-                <button className="admin-icon-btn admin-approve" onClick={() => onAction(a.id, 'approve')} aria-label="Approve">
-                  <Check size={16} />
-                </button>
-                <button className="admin-icon-btn admin-reject" onClick={() => onAction(a.id, 'reject')} aria-label="Reject">
-                  <X size={16} />
-                </button>
-              </td>
+    <div>
+      <div className="bulk-bar">
+        <label className="flyer-select-all">
+          <input type="checkbox" checked={allSelected} onChange={toggleAll} /> Select all
+        </label>
+        {selected.size > 0 && (
+          <button className="btn btn-ghost" onClick={handleBulkDelete}>Delete selected ({selected.size})</button>
+        )}
+      </div>
+      <div className="flyer-grid">
+        {flyers.map((f) => (
+          <div key={f.id} className="flyer-card">
+            <div className="flyer-card-top">
+              <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggleOne(f.id)} />
+            </div>
+            <img src={f.image_url} alt={f.caption || 'Flyer'} />
+            {editingId === f.id ? (
+              <input
+                className="import-cell-input"
+                value={captionDraft}
+                onChange={(e) => setCaptionDraft(e.target.value)}
+              />
+            ) : (
+              <p>{f.caption || '—'}</p>
             )}
-          </tr>
+            <span className={`admin-badge admin-badge-${f.published ? 'approved' : 'pending'}`}>
+              {f.published ? 'Published' : 'Unpublished'}
+            </span>
+            <div className="admin-actions">
+              {editingId === f.id ? (
+                <>
+                  <button className="admin-icon-btn admin-approve" onClick={() => saveCaption(f.id)}>Save</button>
+                  <button className="admin-icon-btn" onClick={() => setEditingId(null)}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button className="admin-icon-btn" onClick={() => onToggle(f.id, f.published)}>
+                    {f.published ? 'Unpublish' : 'Publish'}
+                  </button>
+                  <button className="admin-icon-btn" onClick={() => startEdit(f)} aria-label="Edit caption">
+                    <Pencil size={14} />
+                  </button>
+                  <button className="admin-icon-btn admin-reject" onClick={() => handleDeleteOne(f.id)} aria-label="Delete">
+                    <X size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         ))}
-      </tbody>
-    </table>
+      </div>
+    </div>
   )
 }
 
@@ -616,21 +882,35 @@ const adminStyles = `
     text-transform: capitalize;
   }
   .admin-badge-pending { background: var(--indigo-soft); color: var(--signal); }
-  .admin-badge-done, .admin-badge-approved { background: rgba(16, 185, 129, 0.12); color: var(--live); }
-  .admin-badge-rejected { background: rgba(220, 38, 38, 0.1); color: #DC2626; }
+  .admin-badge-on_hold { background: rgba(234, 179, 8, 0.12); color: #EAB308; }
+  .admin-badge-done, .admin-badge-approved, .admin-badge-active { background: rgba(16, 185, 129, 0.12); color: var(--live); }
+  .admin-badge-rejected, .admin-badge-inactive { background: rgba(220, 38, 38, 0.1); color: #DC2626; }
   .admin-actions { display: flex; gap: 8px; }
   .admin-icon-btn {
-    width: 30px;
+    min-width: 30px;
     height: 30px;
+    padding: 0 8px;
     border-radius: 8px;
     border: 1px solid var(--slate-line);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: var(--ink);
+    color: var(--paper);
+    font-size: 12px;
+    gap: 4px;
   }
   .admin-approve:hover { border-color: var(--live); color: var(--live); }
   .admin-reject:hover { border-color: #DC2626; color: #DC2626; }
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--paper);
+  }
+  .flyer-select-all { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--paper); }
   .flyer-upload-form {
     display: flex;
     gap: 10px;
@@ -658,6 +938,7 @@ const adminStyles = `
     border-radius: var(--radius);
     padding: 12px;
   }
+  .flyer-card-top { margin-bottom: 6px; }
   .flyer-card img {
     width: 100%;
     height: 120px;
@@ -666,7 +947,7 @@ const adminStyles = `
     margin-bottom: 8px;
   }
   .flyer-card p { color: var(--paper); font-size: 13px; margin-bottom: 8px; }
-  .flyer-card .admin-actions { margin-top: 8px; }
+  .flyer-card .admin-actions { margin-top: 8px; flex-wrap: wrap; }
   .flyer-card .admin-icon-btn {
     width: auto;
     padding: 0 10px;
