@@ -1,7 +1,11 @@
-import { useState } from 'react'
-import { Home, Signal, Package, Workflow, LifeBuoy, Menu, X, ArrowRight, Lock } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Home, Signal, Package, Workflow, LifeBuoy, Menu, X, ArrowRight, Lock, ChevronLeft, ChevronRight } from 'lucide-react'
 import SignalBars from './SignalBars.jsx'
 import { useConnectModal } from '../context/ConnectModalContext.jsx'
+
+const COLLAPSE_KEY = 'ft_sidebar_collapsed'
+const EXPANDED_W = '240px'
+const COLLAPSED_W = '76px'
 
 // Absolute paths (/#home, not #home) so these links work correctly from
 // any page — including /admin, which has no #home section of its own to
@@ -16,7 +20,21 @@ const LINKS = [
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSE_KEY) === 'true'
+  )
   const { open: openConnect } = useConnectModal()
+
+  // Drives --sidebar-w on the root element directly, so any other layout
+  // (e.g. main content using margin-left: var(--sidebar-w)) stays in sync
+  // on both the homepage and /admin without needing to touch those files.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--sidebar-w',
+      collapsed ? COLLAPSED_W : EXPANDED_W
+    )
+    localStorage.setItem(COLLAPSE_KEY, String(collapsed))
+  }, [collapsed])
 
   return (
     <>
@@ -26,19 +44,27 @@ export default function Sidebar() {
 
       {open && <div className="sidebar-overlay" onClick={() => setOpen(false)} />}
 
-      <aside className={`sidebar ${open ? 'open' : ''}`}>
+      <aside className={`sidebar ${open ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}>
+        <button
+          className="sidebar-collapse-toggle"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+
         <a href="/#home" className="sidebar-brand" onClick={() => setOpen(false)}>
           <SignalBars variant="accent" />
-          <span><strong>FRAJAN TECH</strong><br />UNLIMITED</span>
+          {!collapsed && <span><strong>FRAJAN TECH</strong><br />UNLIMITED</span>}
         </a>
 
         <nav className="sidebar-links">
           {LINKS.map((l) => {
             const Icon = l.icon
             return (
-              <a key={l.href} href={l.href} onClick={() => setOpen(false)}>
+              <a key={l.href} href={l.href} onClick={() => setOpen(false)} title={collapsed ? l.label : undefined}>
                 <Icon size={17} strokeWidth={2} />
-                <span>{l.label}</span>
+                {!collapsed && <span>{l.label}</span>}
               </a>
             )
           })}
@@ -47,12 +73,13 @@ export default function Sidebar() {
         <button
           className="btn btn-primary sidebar-cta"
           onClick={() => { setOpen(false); openConnect('connection') }}
+          title={collapsed ? 'Get Connected' : undefined}
         >
-          Get Connected <ArrowRight size={16} />
+          <ArrowRight size={16} /> {!collapsed && 'Get Connected'}
         </button>
 
-        <a href="/admin" className="sidebar-admin-link">
-          <Lock size={13} /> Admin
+        <a href="/admin" className="sidebar-admin-link" title={collapsed ? 'Admin' : undefined}>
+          <Lock size={13} /> {!collapsed && 'Admin'}
         </a>
 
         <button className="sidebar-close" onClick={() => setOpen(false)} aria-label="Close menu">
@@ -74,7 +101,29 @@ export default function Sidebar() {
           flex-direction: column;
           z-index: 50;
           overflow-y: auto;
+          transition: width 0.18s ease;
         }
+        .sidebar.collapsed {
+          padding-left: 14px;
+          padding-right: 14px;
+          align-items: center;
+        }
+        .sidebar-collapse-toggle {
+          position: absolute;
+          top: 26px;
+          right: -12px;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: var(--indigo);
+          border: 1px solid var(--slate-line);
+          color: var(--slate);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 51;
+        }
+        .sidebar-collapse-toggle:hover { color: var(--paper); border-color: var(--paper); }
         .sidebar-brand {
           display: flex;
           align-items: center;
@@ -144,6 +193,9 @@ export default function Sidebar() {
         }
 
         @media (max-width: 960px) {
+          .sidebar-collapse-toggle {
+            display: none;
+          }
           .mobile-bar-toggle {
             display: flex;
             align-items: center;
