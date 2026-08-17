@@ -129,7 +129,7 @@ export default function Sidebar() {
           align-items: center;
           gap: 12px;
           font-family: var(--font-display);
-          font-size: 13px;
+          font-size: 16px;
           line-height: 1.3;
           letter-spacing: 0.02em;
           padding-bottom: 24px;
