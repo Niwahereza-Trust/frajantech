@@ -17,7 +17,15 @@ import { AgentModalProvider } from './context/AgentModalContext.jsx'
 
 export default function App() {
   if (window.location.pathname.startsWith('/admin')) {
-    return <AdminPage />
+    return (
+      <ConnectModalProvider>
+        <AgentModalProvider>
+          <AdminPage />
+          <ConnectModal />
+          <AgentModal />
+        </AgentModalProvider>
+      </ConnectModalProvider>
+    )
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Check, X, RefreshCw, Eye, EyeOff, Pencil, Pause } from 'lucide-react'
 import { API_BASE } from '../config.js'
+import Sidebar from '../components/Sidebar.jsx'
 
 const TOKEN_KEY = 'ft_admin_token'
 
@@ -254,32 +255,37 @@ export default function AdminPage() {
 
   if (!authed) {
     return (
-      <div className="admin-gate">
-        <form onSubmit={handleLogin} className="admin-gate-card">
-          <h1>Admin access</h1>
-          <p>Enter the admin token to review requests and agent applications.</p>
-          <div className="admin-token-field">
-            <input
-              type={showToken ? 'text' : 'password'}
-              placeholder="Admin token"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              autoFocus
-            />
-            <button
-              type="button"
-              className="admin-token-toggle"
-              onClick={() => setShowToken((v) => !v)}
-              aria-label={showToken ? 'Hide token' : 'Show token'}
-            >
-              {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
+      <>
+        <Sidebar />
+        <div className="main-content">
+          <div className="admin-gate">
+            <form onSubmit={handleLogin} className="admin-gate-card">
+              <h1>Admin access</h1>
+              <p>Enter the admin token to review requests and agent applications.</p>
+              <div className="admin-token-field">
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  placeholder="Admin token"
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="admin-token-toggle"
+                  onClick={() => setShowToken((v) => !v)}
+                  aria-label={showToken ? 'Hide token' : 'Show token'}
+                >
+                  {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <button className="btn btn-primary" type="submit">Continue</button>
+              {error && <p className="admin-error">{error}</p>}
+            </form>
           </div>
-          <button className="btn btn-primary" type="submit">Continue</button>
-          {error && <p className="admin-error">{error}</p>}
-        </form>
+        </div>
         <style>{adminStyles}</style>
-      </div>
+      </>
     )
   }
 
@@ -330,13 +336,16 @@ export default function AdminPage() {
   ]
 
   return (
-    <div className="admin-page">
-      <header className="admin-header">
-        <h1>Frajan Tech — Admin</h1>
-        <button className="btn btn-ghost" onClick={() => load(token)} disabled={loading}>
-          <RefreshCw size={15} /> {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
-      </header>
+    <>
+      <Sidebar />
+      <div className="main-content">
+        <div className="admin-page">
+          <header className="admin-header">
+            <h1>Frajan Tech — Admin</h1>
+            <button className="btn btn-ghost" onClick={() => load(token)} disabled={loading}>
+              <RefreshCw size={15} /> {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </header>
 
       {error && <p className="admin-error">{error}</p>}
 
@@ -566,9 +575,10 @@ export default function AdminPage() {
           </div>
         )}
       </section>
-
+        </div>
+      </div>
       <style>{adminStyles}</style>
-    </div>
+    </>
   )
 }
 
