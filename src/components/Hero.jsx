@@ -52,8 +52,12 @@ export default function Hero() {
           align-items: center;
         }
         .hero-copy h1 {
-          font-size: clamp(40px, 6vw, 64px);
+          font-size: clamp(32px, 4.5vw, 48px);
           color: var(--paper);
+        }
+        .hero .eyebrow {
+          font-size: 18px;
+          letter-spacing: 0.06em;
         }
         .accent { color: var(--signal); }
         .hero-lede {
