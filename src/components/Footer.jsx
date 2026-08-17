@@ -18,9 +18,6 @@ export default function Footer() {
         <div className="footer-links">
           <a href="mailto:support@frajantechunlimited.com">Customer Care</a>
           <button className="footer-link-btn" onClick={openAgentModal}>Become a Special Agent</button>
-          <a href="https://app.frajantechunlimited.com/pilot">Agent Login</a>
-          <a href="https://app.frajantechunlimited.com/privacy">Privacy</a>
-          <a href="https://app.frajantechunlimited.com/terms">Terms</a>
         </div>
       </div>
 
