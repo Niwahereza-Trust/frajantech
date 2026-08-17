@@ -52,11 +52,11 @@ export default function Hero() {
           align-items: center;
         }
         .hero-copy h1 {
-          font-size: clamp(32px, 4.5vw, 48px);
+          font-size: clamp(26px, 3.5vw, 38px);
           color: var(--paper);
         }
         .hero .eyebrow {
-          font-size: 18px;
+          font-size: 22px;
           letter-spacing: 0.06em;
         }
         .accent { color: var(--signal); }
