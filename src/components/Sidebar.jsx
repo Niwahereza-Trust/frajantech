@@ -3,12 +3,15 @@ import { Home, Signal, Package, Workflow, LifeBuoy, Menu, X, ArrowRight, Lock } 
 import SignalBars from './SignalBars.jsx'
 import { useConnectModal } from '../context/ConnectModalContext.jsx'
 
+// Absolute paths (/#home, not #home) so these links work correctly from
+// any page — including /admin, which has no #home section of its own to
+// scroll to. A bare #home only works when you're already on the homepage.
 const LINKS = [
-  { href: '#home', label: 'Home', icon: Home },
-  { href: '#check-status', label: 'Check Status', icon: Signal },
-  { href: '#packages', label: 'Packages', icon: Package },
-  { href: '#how', label: 'How It Works', icon: Workflow },
-  { href: '#support', label: 'Support', icon: LifeBuoy },
+  { href: '/#home', label: 'Home', icon: Home },
+  { href: '/#check-status', label: 'Check Status', icon: Signal },
+  { href: '/#packages', label: 'Packages', icon: Package },
+  { href: '/#how', label: 'How It Works', icon: Workflow },
+  { href: '/#support', label: 'Support', icon: LifeBuoy },
 ]
 
 export default function Sidebar() {
@@ -24,7 +27,7 @@ export default function Sidebar() {
       {open && <div className="sidebar-overlay" onClick={() => setOpen(false)} />}
 
       <aside className={`sidebar ${open ? 'open' : ''}`}>
-        <a href="#home" className="sidebar-brand" onClick={() => setOpen(false)}>
+        <a href="/#home" className="sidebar-brand" onClick={() => setOpen(false)}>
           <SignalBars variant="accent" />
           <span><strong>FRAJAN TECH</strong><br />UNLIMITED</span>
         </a>
