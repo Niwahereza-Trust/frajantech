@@ -125,7 +125,7 @@ export default function CheckStatus() {
               </div>
               <div>
                 <dt>Connected on</dt>
-                <dd>{fmtDate(result.created_at)}</dd>
+                <dd>{fmtDate(result.registered_at)}</dd>
               </div>
               <div>
                 <dt>Expires on (30 days)</dt>
