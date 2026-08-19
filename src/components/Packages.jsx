@@ -20,7 +20,7 @@ const PLANS = [
   },
   {
     tag: 'Monthly Renewal',
-    name: 'Monthly Package',
+    name: 'Normal Package',
     price: 'UGX 10,000',
     desc: 'Monthly renewal for an existing Normal client.',
     cta: 'Renew Now →',
