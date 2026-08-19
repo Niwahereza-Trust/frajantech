@@ -488,10 +488,21 @@ export default function AdminPage() {
         )}
 
         {importResult && (
-          <p className="admin-status-ok">
-            Imported {importResult.inserted.length} client{importResult.inserted.length === 1 ? '' : 's'}.
-            {importResult.failed.length > 0 && ` ${importResult.failed.length} row(s) failed.`}
-          </p>
+          <div>
+            <p className="admin-status-ok">
+              Imported {importResult.inserted.length} client{importResult.inserted.length === 1 ? '' : 's'}.
+              {importResult.failed.length > 0 && ` ${importResult.failed.length} row(s) failed.`}
+            </p>
+            {importResult.failed.length > 0 && (
+              <ul className="import-fail-list">
+                {importResult.failed.map((f, i) => (
+                  <li key={i}>
+                    {f.row?.full_name || '(unknown)'} — {f.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
 
         {importPreview && (
@@ -971,6 +982,7 @@ const adminStyles = `
     flex-wrap: wrap;
   }
   .admin-status-ok { color: var(--live); font-size: 13px; margin-top: 8px; }
+  .import-fail-list { color: #DC2626; font-size: 12px; margin-top: 6px; padding-left: 18px; }
   .import-preview { margin-top: 16px; }
   .import-preview .admin-table { margin-top: 12px; }
   .import-row-invalid { background: rgba(220, 38, 38, 0.06); }
