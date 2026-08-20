@@ -9,7 +9,7 @@ function fmtDate(d) {
 
 export default function CheckStatus() {
   const [value, setValue] = useState('')
-  const [state, setState] = useState('idle') // idle | loading | found | not_found | limited | error
+  const [state, setState] = useState('idle') // idle | loading | found | not_found | error
   const [result, setResult] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -23,10 +23,6 @@ export default function CheckStatus() {
 
     try {
       const res = await fetch(`${STATUS_API_ENDPOINT}?query=${encodeURIComponent(query)}`)
-      if (res.status === 429) {
-        setState('limited')
-        return
-      }
       if (res.status === 404) {
         setState('not_found')
         return
@@ -54,8 +50,7 @@ export default function CheckStatus() {
           <div className="eyebrow">Client Self-Service</div>
           <h2>Check your subscription status.</h2>
           <p>
-            Use your Client ID or registered Airtel number. For privacy, each
-            device or IP is limited to 5 checks in 24 hours.
+            Use your Client ID or registered Airtel number.
           </p>
         </div>
 
@@ -74,8 +69,7 @@ export default function CheckStatus() {
             </button>
           </div>
           <p className="status-note">
-            CAPTCHA appears after 3 attempts. Airtel numbers and payment
-            history remain hidden.
+            Airtel numbers and payment history remain hidden.
           </p>
 
           <div className="status-result">
@@ -92,7 +86,6 @@ export default function CheckStatus() {
                 </button>
               )}
               {state === 'not_found' && 'No matching account found. Double-check your Client ID or Airtel number.'}
-              {state === 'limited' && 'Too many checks from this device. Please try again after 24 hours.'}
               {state === 'error' && 'Something went wrong. Please try again shortly.'}
             </p>
           </div>
@@ -248,7 +241,7 @@ export default function CheckStatus() {
           text-transform: capitalize;
         }
         .sc-badge-active { background: rgba(16, 185, 129, 0.12); color: var(--live); }
-        .sc-badge-expired { background: rgba(220, 38, 38, 0.1); color: #DC2626; }
+        .sc-badge-expired { background: rgba(220, 38,38, 0.1); color: #DC2626; }
         .sc-badge-pending { background: var(--indigo-soft); color: var(--signal); }
         .sc-rows {
           margin-top: 24px;
@@ -265,7 +258,7 @@ export default function CheckStatus() {
         }
         .sc-rows > div:last-child { border-bottom: none; padding-bottom: 0; }
         .sc-rows dt { font-size: 13px; color: var(--slate); }
-        .sc-rows dd { margin: 0; font-size: 13px; font-weight: 600; color: var(--paper); text-align: right; }
+        .sc-rows dd { margin: 0; font-size: 13px; font-weight: 600; color: var(--paper); text-align: right;}
       `}</style>
     </section>
   )
