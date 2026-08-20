@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Check, X, RefreshCw, Eye, EyeOff, Pencil, Pause } from 'lucide-react'
+import { Check, X, RefreshCw, Eye, EyeOff, Pencil, Trash2, Upload } from 'lucide-react'
 import { API_BASE } from '../config.js'
-import Sidebar from '../components/Sidebar.jsx'
 
 const TOKEN_KEY = 'ft_admin_token'
 
@@ -19,6 +18,19 @@ async function apiFetch(path, { method = 'GET', body, token } = {}) {
   return res.status === 204 ? null : res.json()
 }
 
+// Flyer uploads use multipart/form-data — do NOT set Content-Type manually,
+// the browser needs to add its own multipart boundary.
+async function apiUpload(path, { formData, token }) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'x-admin-token': token },
+    body: formData,
+  })
+  if (res.status === 401) throw new Error('unauthorized')
+  if (!res.ok) throw new Error('request-failed')
+  return res.status === 204 ? null : res.json()
+}
+
 function fmtDate(d) {
   return d ? new Date(d).toLocaleString() : '—'
 }
@@ -30,32 +42,32 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false)
   const [requests, setRequests] = useState([])
   const [agents, setAgents] = useState([])
-  const [clients, setClients] = useState([])
+  const [flyers, setFlyers] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [flyers, setFlyers] = useState([])
+
+  // Request selection + inline edit
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [editingId, setEditingId] = useState(null)
+  const [editForm, setEditForm] = useState({ type: '', fullName: '', airtelNumber: '', package: '' })
+
+  // Flyer upload form
   const [flyerFile, setFlyerFile] = useState(null)
   const [flyerCaption, setFlyerCaption] = useState('')
-  const [uploadingFlyer, setUploadingFlyer] = useState(false)
-  const [importFile, setImportFile] = useState(null)
-  const [importPreview, setImportPreview] = useState(null)
-  const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState(null)
+  const [flyerUploading, setFlyerUploading] = useState(false)
 
   const load = useCallback(async (t) => {
     setLoading(true)
     setError('')
     try {
-      const [reqData, agentData, flyerData, clientData] = await Promise.all([
+      const [reqData, agentData, flyerData] = await Promise.all([
         apiFetch('/api/requests', { token: t }),
         apiFetch('/api/agents', { token: t }),
-        apiFetch('/api/flyers/all', { token: t }),
-        apiFetch('/api/clients', { token: t }),
+        apiFetch('/api/flyers', { token: t }),
       ])
       setRequests(reqData)
       setAgents(agentData)
       setFlyers(flyerData)
-      setClients(clientData)
       setAuthed(true)
     } catch (err) {
       if (err.message === 'unauthorized') {
@@ -82,91 +94,117 @@ export default function AdminPage() {
     setToken(tokenInput.trim())
   }
 
-  // Generic CRUD helpers shared across Requests / Agents / Clients
-  const handleStatusAction = async (basePath, id, action) => {
+  const handleRequestAction = async (id, action) => {
     try {
-      await apiFetch(`${basePath}/${id}/${action}`, { method: 'PATCH', token })
+      await apiFetch(`/api/requests/${id}/${action}`, { method: 'PATCH', token })
       load(token)
     } catch {
       setError('That action failed. Please try again.')
     }
   }
 
-  const handleEdit = async (basePath, id, patch) => {
+  const handleAgentAction = async (id, action) => {
     try {
-      await apiFetch(`${basePath}/${id}`, { method: 'PATCH', token, body: patch })
+      await apiFetch(`/api/agents/${id}/${action}`, { method: 'PATCH', token })
       load(token)
     } catch {
-      setError('Edit failed. Please try again.')
+      setError('That action failed. Please try again.')
     }
   }
 
-  const handleDelete = async (basePath, id) => {
+  // ---- Request selection / bulk delete ----
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = (ids) => {
+    setSelectedIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id))
+      if (allSelected) return new Set()
+      return new Set(ids)
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Delete ${selectedIds.size} request(s)? This cannot be undone.`)) return
     try {
-      await apiFetch(`${basePath}/${id}`, { method: 'DELETE', token })
+      await apiFetch('/api/requests/bulk-delete', {
+        method: 'POST',
+        token,
+        body: { ids: Array.from(selectedIds) },
+      })
+      setSelectedIds(new Set())
+      load(token)
+    } catch {
+      setError('Bulk delete failed. Please try again.')
+    }
+  }
+
+  const handleDeleteOne = async (id) => {
+    if (!confirm('Delete this request? This cannot be undone.')) return
+    try {
+      await apiFetch(`/api/requests/${id}`, { method: 'DELETE', token })
       load(token)
     } catch {
       setError('Delete failed. Please try again.')
     }
   }
 
-  const handleBulkDelete = async (basePath, ids) => {
+  // ---- Request edit ----
+  const startEdit = (row) => {
+    setEditingId(row.id)
+    setEditForm({
+      type: row.type || '',
+      fullName: row.full_name || '',
+      airtelNumber: row.airtel_number || '',
+      package: row.package || '',
+    })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+  }
+
+  const saveEdit = async (id) => {
     try {
-      await Promise.all(ids.map((id) => apiFetch(`${basePath}/${id}`, { method: 'DELETE', token })))
+      await apiFetch(`/api/requests/${id}`, { method: 'PATCH', token, body: editForm })
+      setEditingId(null)
       load(token)
     } catch {
-      setError('Some deletions failed. Please refresh and try again.')
+      setError('Save failed. Please try again.')
     }
   }
 
-  // Flyers
+  // ---- Flyers ----
   const handleFlyerUpload = async (e) => {
     e.preventDefault()
     if (!flyerFile) return
-    setUploadingFlyer(true)
+    setFlyerUploading(true)
     setError('')
     try {
       const formData = new FormData()
       formData.append('image', flyerFile)
       formData.append('caption', flyerCaption)
-
-      const res = await fetch(`${API_BASE}/api/flyers`, {
-        method: 'POST',
-        headers: { 'x-admin-token': token },
-        body: formData,
-      })
-      if (res.status === 401) throw new Error('unauthorized')
-      if (!res.ok) throw new Error('upload-failed')
-
+      await apiUpload('/api/flyers', { formData, token })
       setFlyerFile(null)
       setFlyerCaption('')
+      e.target.reset()
       load(token)
     } catch {
       setError('Flyer upload failed. Please try again.')
     } finally {
-      setUploadingFlyer(false)
-    }
-  }
-
-  const handleFlyerToggle = async (id, published) => {
-    try {
-      await apiFetch(`/api/flyers/${id}`, { method: 'PATCH', token, body: { published: !published } })
-      load(token)
-    } catch {
-      setError('That action failed. Please try again.')
-    }
-  }
-
-  const handleFlyerEditCaption = async (id, caption) => {
-    try {
-      await apiFetch(`/api/flyers/${id}`, { method: 'PATCH', token, body: { caption } })
-      load(token)
-    } catch {
-      setError('Edit failed. Please try again.')
+      setFlyerUploading(false)
     }
   }
 
   const handleFlyerDelete = async (id) => {
+    if (!confirm('Delete this flyer?')) return
     try {
       await apiFetch(`/api/flyers/${id}`, { method: 'DELETE', token })
       load(token)
@@ -175,281 +213,60 @@ export default function AdminPage() {
     }
   }
 
-  const handleFlyerBulkDelete = async (ids) => {
-    try {
-      await Promise.all(ids.map((id) => apiFetch(`/api/flyers/${id}`, { method: 'DELETE', token })))
-      load(token)
-    } catch {
-      setError('Some deletions failed. Please refresh and try again.')
-    }
-  }
-
-  // PDF import
-  const handlePreviewImport = async (e) => {
-    e.preventDefault()
-    if (!importFile) return
-    setImporting(true)
-    setError('')
-    setImportResult(null)
-    try {
-      const formData = new FormData()
-      formData.append('pdf', importFile)
-
-      const res = await fetch(`${API_BASE}/api/clients/import/preview`, {
-        method: 'POST',
-        headers: { 'x-admin-token': token },
-        body: formData,
-      })
-      if (res.status === 401) throw new Error('unauthorized')
-      if (!res.ok) throw new Error('preview-failed')
-
-      const data = await res.json()
-      setImportPreview(data)
-    } catch {
-      setError('Could not read that PDF. Please check the file and try again.')
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  const updatePreviewRow = (index, field, value) => {
-    setImportPreview((prev) => {
-      const rows = [...prev.rows]
-      rows[index] = { ...rows[index], [field]: value }
-      return { ...prev, rows }
-    })
-  }
-
-  const removePreviewRow = (index) => {
-    setImportPreview((prev) => ({
-      ...prev,
-      rows: prev.rows.filter((_, i) => i !== index),
-    }))
-  }
-
-  const handleConfirmImport = async () => {
-    if (!importPreview?.rows?.length) return
-    setImporting(true)
-    setError('')
-    try {
-      const result = await apiFetch('/api/clients/import/confirm', {
-        method: 'POST',
-        token,
-        body: { rows: importPreview.rows },
-      })
-      setImportResult(result)
-      setImportPreview(null)
-      setImportFile(null)
-      load(token)
-    } catch {
-      setError('Import failed. Please try again.')
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  const cancelImport = () => {
-    setImportPreview(null)
-    setImportFile(null)
-  }
-
   if (!authed) {
     return (
-      <>
-        <Sidebar />
-        <div className="main-content">
-          <div className="admin-gate">
-            <form onSubmit={handleLogin} className="admin-gate-card">
-              <h1>Admin access</h1>
-              <p>Enter the admin token to review requests and agent applications.</p>
-              <div className="admin-token-field">
-                <input
-                  type={showToken ? 'text' : 'password'}
-                  placeholder="Admin token"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className="admin-token-toggle"
-                  onClick={() => setShowToken((v) => !v)}
-                  aria-label={showToken ? 'Hide token' : 'Show token'}
-                >
-                  {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <button className="btn btn-primary" type="submit">Continue</button>
-              {error && <p className="admin-error">{error}</p>}
-            </form>
+      <div className="admin-gate">
+        <form onSubmit={handleLogin} className="admin-gate-card">
+          <h1>Admin access</h1>
+          <p>Enter the admin token to review requests and agent applications.</p>
+          <div className="admin-token-field">
+            <input
+              type={showToken ? 'text' : 'password'}
+              placeholder="Admin token"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="admin-token-toggle"
+              onClick={() => setShowToken((v) => !v)}
+              aria-label={showToken ? 'Hide token' : 'Show token'}
+            >
+              {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
           </div>
-        </div>
+          <button className="btn btn-primary" type="submit">Continue</button>
+          {error && <p className="admin-error">{error}</p>}
+        </form>
         <style>{adminStyles}</style>
-      </>
+      </div>
     )
   }
 
-  const pendingRequests = requests.filter((r) => r.status === 'pending' || r.status === 'on_hold')
-  const otherRequests = requests.filter((r) => r.status !== 'pending' && r.status !== 'on_hold')
-  const pendingAgents = agents.filter((a) => a.status === 'pending' || a.status === 'on_hold')
-  const otherAgents = agents.filter((a) => a.status !== 'pending' && a.status !== 'on_hold')
-
-  const requestColumns = [
-    { key: 'reference_code', label: 'Ref' },
-    { key: 'type', label: 'Type' },
-    { key: 'full_name', label: 'Name', editable: true },
-    { key: 'airtel_number', label: 'Airtel', editable: true },
-    { key: 'package', label: 'Package', editable: true },
-    {
-      key: 'proof',
-      label: 'Proof',
-      render: (r) =>
-        r.payment_proof_url ? (
-          <a href={r.payment_proof_url} target="_blank" rel="noreferrer">
-            <img src={r.payment_proof_url} alt="Payment proof" className="proof-thumb" />
-          </a>
-        ) : (
-          '—'
-        ),
-    },
-    { key: 'status', label: 'Status', render: (r) => <span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span> },
-    { key: 'created_at', label: 'Created', render: (r) => fmtDate(r.created_at) },
-  ]
-
-  const agentColumns = [
-    { key: 'full_name', label: 'Name', editable: true },
-    { key: 'phone_number', label: 'Phone', editable: true },
-    { key: 'email', label: 'Email', editable: true },
-    { key: 'district', label: 'District', editable: true },
-    { key: 'status', label: 'Status', render: (a) => <span className={`admin-badge admin-badge-${a.status}`}>{a.status}</span> },
-    { key: 'created_at', label: 'Applied', render: (a) => fmtDate(a.created_at) },
-  ]
-
-  const clientColumns = [
-    { key: 'client_ref', label: 'Ref' },
-    { key: 'full_name', label: 'Name', editable: true },
-    { key: 'airtel_number', label: 'Airtel', editable: true },
-    { key: 'package', label: 'Package', editable: true },
-    { key: 'status', label: 'Status', editable: true },
-    { key: 'registered_at', label: 'Registered', render: (c) => fmtDate(c.registered_at) },
-    { key: 'expires_at', label: 'Expires', render: (c) => fmtDate(c.expires_at) },
-  ]
+  const pendingRequests = requests.filter((r) => r.status === 'pending')
+  const otherRequests = requests.filter((r) => r.status !== 'pending')
+  const pendingAgents = agents.filter((a) => a.status === 'pending')
+  const otherAgents = agents.filter((a) => a.status !== 'pending')
 
   return (
-    <>
-      <Sidebar />
-      <div className="main-content">
-        <div className="admin-page">
-          <header className="admin-header">
-            <h1>Frajan Tech — Admin</h1>
-            <button className="btn btn-ghost" onClick={() => load(token)} disabled={loading}>
-              <RefreshCw size={15} /> {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </header>
+    <div className="admin-page">
+      <header className="admin-header">
+        <h1>Frajan Tech — Admin</h1>
+        <button className="btn btn-ghost" onClick={() => load(token)} disabled={loading}>
+          <RefreshCw size={15} /> {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </header>
 
       {error && <p className="admin-error">{error}</p>}
 
       <section>
-        <h2>Pending requests ({pendingRequests.length})</h2>
-        <ManagedTable
-          rows={pendingRequests}
-          columns={requestColumns}
-          getId={(r) => r.id}
-          onEdit={(id, patch) => handleEdit('/api/requests', id, patch)}
-          onDelete={(id) => handleDelete('/api/requests', id)}
-          onBulkDelete={(ids) => handleBulkDelete('/api/requests', ids)}
-          extraActions={(r) => (
-            <>
-              <button className="admin-icon-btn admin-approve" onClick={() => handleStatusAction('/api/requests', r.id, 'approve')} aria-label="Approve">
-                <Check size={16} />
-              </button>
-              <button className="admin-icon-btn admin-reject" onClick={() => handleStatusAction('/api/requests', r.id, 'reject')} aria-label="Reject">
-                <X size={16} />
-              </button>
-              {r.status === 'pending' && (
-                <button className="admin-icon-btn" onClick={() => handleStatusAction('/api/requests', r.id, 'hold')} aria-label="Suspend">
-                  <Pause size={16} />
-                </button>
-              )}
-            </>
-          )}
-        />
-      </section>
-
-      {otherRequests.length > 0 && (
-        <section>
-          <h2>Past requests</h2>
-          <ManagedTable
-            rows={otherRequests}
-            columns={requestColumns}
-            getId={(r) => r.id}
-            onEdit={(id, patch) => handleEdit('/api/requests', id, patch)}
-            onDelete={(id) => handleDelete('/api/requests', id)}
-            onBulkDelete={(ids) => handleBulkDelete('/api/requests', ids)}
-          />
-        </section>
-      )}
-
-      <section>
-        <h2>Pending agent applications ({pendingAgents.length})</h2>
-        <ManagedTable
-          rows={pendingAgents}
-          columns={agentColumns}
-          getId={(a) => a.id}
-          onEdit={(id, patch) => handleEdit('/api/agents', id, patch)}
-          onDelete={(id) => handleDelete('/api/agents', id)}
-          onBulkDelete={(ids) => handleBulkDelete('/api/agents', ids)}
-          extraActions={(a) => (
-            <>
-              <button className="admin-icon-btn admin-approve" onClick={() => handleStatusAction('/api/agents', a.id, 'approve')} aria-label="Approve">
-                <Check size={16} />
-              </button>
-              <button className="admin-icon-btn admin-reject" onClick={() => handleStatusAction('/api/agents', a.id, 'reject')} aria-label="Reject">
-                <X size={16} />
-              </button>
-              {a.status === 'pending' && (
-                <button className="admin-icon-btn" onClick={() => handleStatusAction('/api/agents', a.id, 'hold')} aria-label="Suspend">
-                  <Pause size={16} />
-                </button>
-              )}
-            </>
-          )}
-        />
-      </section>
-
-      {otherAgents.length > 0 && (
-        <section>
-          <h2>Past agent applications</h2>
-          <ManagedTable
-            rows={otherAgents}
-            columns={agentColumns}
-            getId={(a) => a.id}
-            onEdit={(id, patch) => handleEdit('/api/agents', id, patch)}
-            onDelete={(id) => handleDelete('/api/agents', id)}
-            onBulkDelete={(ids) => handleBulkDelete('/api/agents', ids)}
-          />
-        </section>
-      )}
-
-      <section>
-        <h2>Clients ({clients.length})</h2>
-        <ManagedTable
-          rows={clients}
-          columns={clientColumns}
-          getId={(c) => c.id}
-          onEdit={(id, patch) => handleEdit('/api/clients', id, patch)}
-          onDelete={(id) => handleDelete('/api/clients', id)}
-          onBulkDelete={(ids) => handleBulkDelete('/api/clients', ids)}
-        />
-      </section>
-
-      <section>
         <h2>Flyers</h2>
-        <form onSubmit={handleFlyerUpload} className="flyer-upload-form">
+        <form className="flyer-upload" onSubmit={handleFlyerUpload}>
           <input
             type="file"
             accept="image/*"
-            onChange={(e) => setFlyerFile(e.target.files[0])}
+            onChange={(e) => setFlyerFile(e.target.files?.[0] || null)}
           />
           <input
             type="text"
@@ -457,348 +274,225 @@ export default function AdminPage() {
             value={flyerCaption}
             onChange={(e) => setFlyerCaption(e.target.value)}
           />
-          <button className="btn btn-primary" type="submit" disabled={!flyerFile || uploadingFlyer}>
-            {uploadingFlyer ? 'Uploading…' : 'Upload flyer'}
+          <button className="btn btn-primary" type="submit" disabled={!flyerFile || flyerUploading}>
+            <Upload size={15} /> {flyerUploading ? 'Uploading…' : 'Upload flyer'}
           </button>
         </form>
 
-        <FlyerGrid
-          flyers={flyers}
-          onToggle={handleFlyerToggle}
-          onEditCaption={handleFlyerEditCaption}
-          onDelete={handleFlyerDelete}
-          onBulkDelete={handleFlyerBulkDelete}
-        />
+        {flyers.length === 0 ? (
+          <p className="admin-empty">No flyers yet.</p>
+        ) : (
+          <div className="flyer-grid">
+            {flyers.map((f) => (
+              <div className="flyer-card" key={f.id}>
+                <img src={f.image_url} alt={f.caption || 'Flyer'} />
+                {f.caption && <p>{f.caption}</p>}
+                <button className="admin-icon-btn admin-reject" onClick={() => handleFlyerDelete(f.id)} aria-label="Delete flyer">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
-        <h2>Import clients from PDF</h2>
-
-        {!importPreview && (
-          <form onSubmit={handlePreviewImport} className="import-upload-form">
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={(e) => setImportFile(e.target.files[0])}
-            />
-            <button className="btn btn-primary" type="submit" disabled={!importFile || importing}>
-              {importing ? 'Reading…' : 'Preview import'}
-            </button>
-          </form>
-        )}
-
-        {importResult && (
-          <div>
-            <p className="admin-status-ok">
-              Imported {importResult.inserted.length} client{importResult.inserted.length === 1 ? '' : 's'}.
-              {importResult.failed.length > 0 && ` ${importResult.failed.length} row(s) failed.`}
-            </p>
-            {importResult.failed.length > 0 && (
-              <ul className="import-fail-list">
-                {importResult.failed.map((f, i) => (
-                  <li key={i}>
-                    {f.row?.full_name || '(unknown)'} — {f.reason}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {importPreview && (
-          <div className="import-preview">
-            <p className="admin-empty">
-              {importPreview.rows.length} row{importPreview.rows.length === 1 ? '' : 's'} found.
-              Review before confirming — you can edit or remove any row.
-            </p>
-
-            {importPreview.skippedLines?.length > 0 && (
-              <p className="admin-error">
-                {importPreview.skippedLines.length} line(s) in the PDF couldn't be parsed and were skipped.
-              </p>
-            )}
-
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Registered</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {importPreview.rows.map((row, i) => (
-                  <tr key={i} className={row.valid ? '' : 'import-row-invalid'}>
-                    <td>
-                      <input
-                        className="import-cell-input"
-                        value={row.full_name}
-                        onChange={(e) => updatePreviewRow(i, 'full_name', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="import-cell-input"
-                        value={row.airtel_number}
-                        onChange={(e) => updatePreviewRow(i, 'airtel_number', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="import-cell-input"
-                        value={row.package}
-                        onChange={(e) => updatePreviewRow(i, 'package', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="import-cell-input"
-                        value={row.status}
-                        onChange={(e) => updatePreviewRow(i, 'status', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        className="import-cell-input"
-                        value={row.registered_at || ''}
-                        onChange={(e) => updatePreviewRow(i, 'registered_at', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <button className="admin-icon-btn admin-reject" onClick={() => removePreviewRow(i)} aria-label="Remove row">
-                        <X size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="import-actions">
-              <button className="btn btn-ghost" onClick={cancelImport} disabled={importing}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                onClick={handleConfirmImport}
-                disabled={importing || importPreview.rows.length === 0}
-              >
-                {importing ? 'Importing…' : `Confirm import (${importPreview.rows.length})`}
-              </button>
-            </div>
-          </div>
-        )}
+        <h2>Pending requests ({pendingRequests.length})</h2>
+        <RequestsTable
+          rows={pendingRequests}
+          onAction={handleRequestAction}
+          showActions
+          selectedIds={selectedIds}
+          onToggleOne={toggleSelectOne}
+          onToggleAll={toggleSelectAll}
+          onDeleteOne={handleDeleteOne}
+          onBulkDelete={handleBulkDelete}
+          editingId={editingId}
+          editForm={editForm}
+          setEditForm={setEditForm}
+          onStartEdit={startEdit}
+          onCancelEdit={cancelEdit}
+          onSaveEdit={saveEdit}
+        />
       </section>
-        </div>
-      </div>
-      <style>{adminStyles}</style>
-    </>
-  )
-}
 
-// Reusable table: select-all checkboxes, inline edit, per-row delete, bulk delete.
-function ManagedTable({ rows, columns, getId, onEdit, onDelete, onBulkDelete, extraActions }) {
-  const [selected, setSelected] = useState(new Set())
-  const [editingId, setEditingId] = useState(null)
-  const [draft, setDraft] = useState({})
-
-  if (rows.length === 0) return <p className="admin-empty">Nothing here.</p>
-
-  const allSelected = rows.length > 0 && rows.every((r) => selected.has(getId(r)))
-
-  const toggleAll = () => {
-    setSelected(allSelected ? new Set() : new Set(rows.map(getId)))
-  }
-  const toggleOne = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  const startEdit = (row) => {
-    setEditingId(getId(row))
-    setDraft({ ...row })
-  }
-  const cancelEdit = () => {
-    setEditingId(null)
-    setDraft({})
-  }
-  const saveEdit = async () => {
-    await onEdit(editingId, draft)
-    cancelEdit()
-  }
-  const handleBulkDelete = async () => {
-    if (selected.size === 0) return
-    if (!window.confirm(`Delete ${selected.size} selected row(s)? This cannot be undone.`)) return
-    await onBulkDelete([...selected])
-    setSelected(new Set())
-  }
-  const handleDeleteOne = async (id) => {
-    if (!window.confirm('Delete this row? This cannot be undone.')) return
-    await onDelete(id)
-  }
-
-  return (
-    <div>
-      {selected.size > 0 && (
-        <div className="bulk-bar">
-          <span>{selected.size} selected</span>
-          <button className="btn btn-ghost" onClick={handleBulkDelete}>Delete selected</button>
-        </div>
+      {otherRequests.length > 0 && (
+        <section>
+          <h2>Past requests</h2>
+          <RequestsTable
+            rows={otherRequests}
+            selectedIds={selectedIds}
+            onToggleOne={toggleSelectOne}
+            onToggleAll={toggleSelectAll}
+            onDeleteOne={handleDeleteOne}
+            onBulkDelete={handleBulkDelete}
+            editingId={editingId}
+            editForm={editForm}
+            setEditForm={setEditForm}
+            onStartEdit={startEdit}
+            onCancelEdit={cancelEdit}
+            onSaveEdit={saveEdit}
+          />
+        </section>
       )}
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all" /></th>
-            {columns.map((c) => (
-              <th key={c.key}>{c.label}</th>
-            ))}
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const id = getId(row)
-            const isEditing = editingId === id
-            return (
-              <tr key={id}>
-                <td>
-                  <input type="checkbox" checked={selected.has(id)} onChange={() => toggleOne(id)} aria-label="Select row" />
-                </td>
-                {columns.map((c) => (
-                  <td key={c.key}>
-                    {isEditing && c.editable ? (
-                      <input
-                        className="import-cell-input"
-                        value={draft[c.key] ?? ''}
-                        onChange={(e) => setDraft((d) => ({ ...d, [c.key]: e.target.value }))}
-                      />
-                    ) : c.render ? (
-                      c.render(row)
-                    ) : (
-                      row[c.key] ?? '—'
-                    )}
-                  </td>
-                ))}
-                <td className="admin-actions">
-                  {isEditing ? (
-                    <>
-                      <button className="admin-icon-btn admin-approve" onClick={saveEdit} aria-label="Save">
-                        <Check size={16} />
-                      </button>
-                      <button className="admin-icon-btn" onClick={cancelEdit} aria-label="Cancel">
-                        <X size={16} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {extraActions && extraActions(row)}
-                      <button className="admin-icon-btn" onClick={() => startEdit(row)} aria-label="Edit">
-                        <Pencil size={16} />
-                      </button>
-                      <button className="admin-icon-btn admin-reject" onClick={() => handleDeleteOne(id)} aria-label="Delete">
-                        <X size={16} />
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+
+      <section>
+        <h2>Pending agent applications ({pendingAgents.length})</h2>
+        <AgentsTable rows={pendingAgents} onAction={handleAgentAction} showActions />
+      </section>
+
+      {otherAgents.length > 0 && (
+        <section>
+          <h2>Past agent applications</h2>
+          <AgentsTable rows={otherAgents} />
+        </section>
+      )}
+
+      <style>{adminStyles}</style>
     </div>
   )
 }
 
-function FlyerGrid({ flyers, onToggle, onEditCaption, onDelete, onBulkDelete }) {
-  const [selected, setSelected] = useState(new Set())
-  const [editingId, setEditingId] = useState(null)
-  const [captionDraft, setCaptionDraft] = useState('')
+function RequestsTable({
+  rows, onAction, showActions,
+  selectedIds, onToggleOne, onToggleAll, onDeleteOne, onBulkDelete,
+  editingId, editForm, setEditForm, onStartEdit, onCancelEdit, onSaveEdit,
+}) {
+  if (rows.length === 0) return <p className="admin-empty">Nothing here.</p>
 
-  if (flyers.length === 0) return <p className="admin-empty">No flyers yet.</p>
-
-  const toggleOne = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-  const allSelected = flyers.length > 0 && flyers.every((f) => selected.has(f.id))
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(flyers.map((f) => f.id)))
-
-  const handleBulkDelete = async () => {
-    if (selected.size === 0) return
-    if (!window.confirm(`Delete ${selected.size} selected flyer(s)? This cannot be undone.`)) return
-    await onBulkDelete([...selected])
-    setSelected(new Set())
-  }
-  const handleDeleteOne = async (id) => {
-    if (!window.confirm('Delete this flyer? This cannot be undone.')) return
-    await onDelete(id)
-  }
-  const startEdit = (f) => {
-    setEditingId(f.id)
-    setCaptionDraft(f.caption || '')
-  }
-  const saveCaption = async (id) => {
-    await onEditCaption(id, captionDraft)
-    setEditingId(null)
-  }
+  const ids = rows.map((r) => r.id)
+  const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id))
+  const anySelectedHere = ids.some((id) => selectedIds.has(id))
 
   return (
-    <div>
-      <div className="bulk-bar">
-        <label className="flyer-select-all">
-          <input type="checkbox" checked={allSelected} onChange={toggleAll} /> Select all
-        </label>
-        {selected.size > 0 && (
-          <button className="btn btn-ghost" onClick={handleBulkDelete}>Delete selected ({selected.size})</button>
-        )}
-      </div>
-      <div className="flyer-grid">
-        {flyers.map((f) => (
-          <div key={f.id} className="flyer-card">
-            <div className="flyer-card-top">
-              <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggleOne(f.id)} />
-            </div>
-            <img src={f.image_url} alt={f.caption || 'Flyer'} />
-            {editingId === f.id ? (
-              <input
-                className="import-cell-input"
-                value={captionDraft}
-                onChange={(e) => setCaptionDraft(e.target.value)}
-              />
-            ) : (
-              <p>{f.caption || '—'}</p>
-            )}
-            <span className={`admin-badge admin-badge-${f.published ? 'approved' : 'pending'}`}>
-              {f.published ? 'Published' : 'Unpublished'}
-            </span>
-            <div className="admin-actions">
-              {editingId === f.id ? (
-                <>
-                  <button className="admin-icon-btn admin-approve" onClick={() => saveCaption(f.id)}>Save</button>
-                  <button className="admin-icon-btn" onClick={() => setEditingId(null)}>Cancel</button>
-                </>
-              ) : (
-                <>
-                  <button className="admin-icon-btn" onClick={() => onToggle(f.id, f.published)}>
-                    {f.published ? 'Unpublish' : 'Publish'}
+    <>
+      {anySelectedHere && (
+        <div className="admin-bulk-bar">
+          <span>{ids.filter((id) => selectedIds.has(id)).length} selected</span>
+          <button className="btn btn-ghost admin-bulk-delete" onClick={onBulkDelete}>
+            <Trash2 size={14} /> Delete selected
+          </button>
+        </div>
+      )}
+      <div className="admin-table-wrap">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>
+              <input type="checkbox" checked={allSelected} onChange={() => onToggleAll(ids)} aria-label="Select all" />
+            </th>
+            <th>Ref</th><th>Type</th><th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            editingId === r.id ? (
+              <tr key={r.id} className="admin-editing-row">
+                <td></td>
+                <td>{r.reference_code}</td>
+                <td>
+                  <input value={editForm.type} onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))} />
+                </td>
+                <td>
+                  <input value={editForm.fullName} onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))} />
+                </td>
+                <td>
+                  <input value={editForm.airtelNumber} onChange={(e) => setEditForm((f) => ({ ...f, airtelNumber: e.target.value }))} />
+                </td>
+                <td>
+                  <input value={editForm.package} onChange={(e) => setEditForm((f) => ({ ...f, package: e.target.value }))} />
+                </td>
+                <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
+                <td>{fmtDate(r.created_at)}</td>
+                <td className="admin-actions">
+                  <button className="admin-icon-btn admin-approve" onClick={() => onSaveEdit(r.id)} aria-label="Save">
+                    <Check size={16} />
                   </button>
-                  <button className="admin-icon-btn" onClick={() => startEdit(f)} aria-label="Edit caption">
-                    <Pencil size={14} />
-                  </button>
-                  <button className="admin-icon-btn admin-reject" onClick={() => handleDeleteOne(f.id)} aria-label="Delete">
+                  <button className="admin-icon-btn admin-reject" onClick={onCancelEdit} aria-label="Cancel">
                     <X size={16} />
                   </button>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
+                </td>
+              </tr>
+            ) : (
+              <tr key={r.id}>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(r.id)}
+                    onChange={() => onToggleOne(r.id)}
+                    aria-label={`Select ${r.full_name}`}
+                  />
+                </td>
+                <td>{r.reference_code}</td>
+                <td>{r.type}</td>
+                <td>{r.full_name}</td>
+                <td>{r.airtel_number}</td>
+                <td>{r.package || '—'}</td>
+                <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
+                <td>{fmtDate(r.created_at)}</td>
+                <td className="admin-actions">
+                  {showActions && (
+                    <>
+                      <button className="admin-icon-btn admin-approve" onClick={() => onAction(r.id, 'approve')} aria-label="Approve">
+                        <Check size={16} />
+                      </button>
+                      <button className="admin-icon-btn admin-reject" onClick={() => onAction(r.id, 'reject')} aria-label="Reject">
+                        <X size={16} />
+                      </button>
+                    </>
+                  )}
+                  <button className="admin-icon-btn" onClick={() => onStartEdit(r)} aria-label="Edit">
+                    <Pencil size={16} />
+                  </button>
+                  <button className="admin-icon-btn admin-reject" onClick={() => onDeleteOne(r.id)} aria-label="Delete">
+                    <Trash2 size={16} />
+                  </button>
+                </td>
+              </tr>
+            )
+          ))}
+        </tbody>
+      </table>
       </div>
+    </>
+  )
+}
+
+function AgentsTable({ rows, onAction, showActions }) {
+  if (rows.length === 0) return <p className="admin-empty">Nothing here.</p>
+  return (
+    <div className="admin-table-wrap">
+    <table className="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th><th>Phone</th><th>Email</th><th>District</th><th>Status</th><th>Applied</th>
+          {showActions && <th></th>}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((a) => (
+          <tr key={a.id}>
+            <td>{a.full_name}</td>
+            <td>{a.phone_number}</td>
+            <td>{a.email}</td>
+            <td>{a.district || '—'}</td>
+            <td><span className={`admin-badge admin-badge-${a.status}`}>{a.status}</span></td>
+            <td>{fmtDate(a.created_at)}</td>
+            {showActions && (
+              <td className="admin-actions">
+                <button className="admin-icon-btn admin-approve" onClick={() => onAction(a.id, 'approve')} aria-label="Approve">
+                  <Check size={16} />
+                </button>
+                <button className="admin-icon-btn admin-reject" onClick={() => onAction(a.id, 'reject')} aria-label="Reject">
+                  <X size={16} />
+                </button>
+              </td>
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
     </div>
   )
 }
@@ -870,6 +564,10 @@ const adminStyles = `
   .admin-page h2 { font-size: 15px; color: var(--paper); margin-bottom: 14px; }
   .admin-empty { color: var(--slate); font-size: 14px; }
   .admin-error { color: #DC2626; font-size: 13px; }
+  .admin-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .admin-table {
     width: 100%;
     border-collapse: collapse;
@@ -894,6 +592,15 @@ const adminStyles = `
     letter-spacing: 0.05em;
   }
   .admin-table tr:last-child td { border-bottom: none; }
+  .admin-table input[type="text"], .admin-table input:not([type="checkbox"]) {
+    background: var(--ink);
+    border: 1px solid var(--slate-line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 13px;
+    color: var(--paper);
+    width: 100%;
+  }
   .admin-badge {
     display: inline-block;
     padding: 3px 10px;
@@ -903,111 +610,70 @@ const adminStyles = `
     text-transform: capitalize;
   }
   .admin-badge-pending { background: var(--indigo-soft); color: var(--signal); }
-  .admin-badge-on_hold { background: rgba(234, 179, 8, 0.12); color: #EAB308; }
-  .admin-badge-done, .admin-badge-approved, .admin-badge-active { background: rgba(16, 185, 129, 0.12); color: var(--live); }
-  .admin-badge-rejected, .admin-badge-inactive { background: rgba(220, 38, 38, 0.1); color: #DC2626; }
+  .admin-badge-done, .admin-badge-approved { background: rgba(16, 185, 129, 0.12); color: var(--live); }
+  .admin-badge-rejected { background: rgba(220, 38, 38, 0.1); color: #DC2626; }
   .admin-actions { display: flex; gap: 8px; }
   .admin-icon-btn {
-    min-width: 30px;
+    width: 30px;
     height: 30px;
-    padding: 0 8px;
     border-radius: 8px;
     border: 1px solid var(--slate-line);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: var(--ink);
-    color: var(--paper);
-    font-size: 12px;
-    gap: 4px;
   }
   .admin-approve:hover { border-color: var(--live); color: var(--live); }
   .admin-reject:hover { border-color: #DC2626; color: #DC2626; }
-  .bulk-bar {
+  .admin-bulk-bar {
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 12px;
+    gap: 12px;
+    margin-bottom: 10px;
     font-size: 13px;
     color: var(--paper);
   }
-  .flyer-select-all { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--paper); }
-  .flyer-upload-form {
+  .admin-bulk-delete { gap: 6px; border-color: #DC2626; color: #DC2626; }
+  .flyer-upload {
     display: flex;
     gap: 10px;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
     flex-wrap: wrap;
   }
-  .flyer-upload-form input[type="text"] {
+  .flyer-upload input[type="text"] {
+    flex: 1;
+    min-width: 180px;
+    background: var(--indigo);
     border: 1px solid var(--slate-line);
     border-radius: 8px;
     padding: 8px 12px;
-    background: var(--ink);
     color: var(--paper);
-    flex: 1;
-    min-width: 180px;
   }
+  .flyer-upload .btn { gap: 6px; }
   .flyer-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 16px;
   }
   .flyer-card {
+    position: relative;
     background: var(--indigo);
     border: 1px solid var(--slate-line);
     border-radius: var(--radius);
-    padding: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
-  .flyer-card-top { margin-bottom: 6px; }
   .flyer-card img {
     width: 100%;
     height: 120px;
     object-fit: cover;
     border-radius: 8px;
-    margin-bottom: 8px;
   }
-  .flyer-card p { color: var(--paper); font-size: 13px; margin-bottom: 8px; }
-  .flyer-card .admin-actions { margin-top: 8px; flex-wrap: wrap; }
+  .flyer-card p { font-size: 12px; color: var(--slate); margin: 0; }
   .flyer-card .admin-icon-btn {
-    width: auto;
-    padding: 0 10px;
-    font-size: 12px;
-    color: var(--paper);
-  }
-  .import-upload-form {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .admin-status-ok { color: var(--live); font-size: 13px; margin-top: 8px; }
-  .import-fail-list { color: #DC2626; font-size: 12px; margin-top: 6px; padding-left: 18px; }
-  .import-preview { margin-top: 16px; }
-  .import-preview .admin-table { margin-top: 12px; }
-  .import-row-invalid { background: rgba(220, 38, 38, 0.06); }
-  .import-cell-input {
-    border: 1px solid var(--slate-line);
-    border-radius: 6px;
-    padding: 6px 8px;
-    font-size: 13px;
-    background: var(--ink);
-    color: var(--paper);
-    width: 100%;
-    min-width: 100px;
-  }
-  .import-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 16px;
-  }
-  .proof-thumb {
-    width: 44px;
-    height: 44px;
-    object-fit: cover;
-    border-radius: 6px;
-    border: 1px solid var(--slate-line);
-    display: block;
+    align-self: flex-end;
   }
 `
