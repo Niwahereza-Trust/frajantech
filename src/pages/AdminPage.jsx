@@ -43,6 +43,7 @@ export default function AdminPage() {
   const [requests, setRequests] = useState([])
   const [agents, setAgents] = useState([])
   const [flyers, setFlyers] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -50,6 +51,10 @@ export default function AdminPage() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({ type: '', fullName: '', airtelNumber: '', package: '' })
+
+  // Client inline edit
+  const [editingClientId, setEditingClientId] = useState(null)
+  const [clientEditForm, setClientEditForm] = useState({ full_name: '', airtel_number: '', package: '', status: 'active' })
 
   // Flyer upload form
   const [flyerFile, setFlyerFile] = useState(null)
@@ -60,14 +65,16 @@ export default function AdminPage() {
     setLoading(true)
     setError('')
     try {
-      const [reqData, agentData, flyerData] = await Promise.all([
+      const [reqData, agentData, flyerData, clientData] = await Promise.all([
         apiFetch('/api/requests', { token: t }),
         apiFetch('/api/agents', { token: t }),
         apiFetch('/api/flyers', { token: t }),
+        apiFetch('/api/clients', { token: t }),
       ])
       setRequests(reqData)
       setAgents(agentData)
       setFlyers(flyerData)
+      setClients(clientData)
       setAuthed(true)
     } catch (err) {
       if (err.message === 'unauthorized') {
@@ -213,6 +220,41 @@ export default function AdminPage() {
     }
   }
 
+  // ---- Clients ----
+  const startClientEdit = (row) => {
+    setEditingClientId(row.id)
+    setClientEditForm({
+      full_name: row.full_name || '',
+      airtel_number: row.airtel_number || '',
+      package: row.package || '',
+      status: row.status || 'active',
+    })
+  }
+
+  const cancelClientEdit = () => {
+    setEditingClientId(null)
+  }
+
+  const saveClientEdit = async (id) => {
+    try {
+      await apiFetch(`/api/clients/${id}`, { method: 'PATCH', token, body: clientEditForm })
+      setEditingClientId(null)
+      load(token)
+    } catch {
+      setError('Save failed. Please try again.')
+    }
+  }
+
+  const handleClientDelete = async (id) => {
+    if (!confirm('Delete this client? This cannot be undone.')) return
+    try {
+      await apiFetch(`/api/clients/${id}`, { method: 'DELETE', token })
+      load(token)
+    } catch {
+      setError('Delete failed. Please try again.')
+    }
+  }
+
   if (!authed) {
     return (
       <div className="admin-gate">
@@ -337,6 +379,20 @@ export default function AdminPage() {
       )}
 
       <section>
+        <h2>Clients ({clients.length})</h2>
+        <ClientsTable
+          rows={clients}
+          editingId={editingClientId}
+          editForm={clientEditForm}
+          setEditForm={setClientEditForm}
+          onStartEdit={startClientEdit}
+          onCancelEdit={cancelClientEdit}
+          onSaveEdit={saveClientEdit}
+          onDelete={handleClientDelete}
+        />
+      </section>
+
+      <section>
         <h2>Pending agent applications ({pendingAgents.length})</h2>
         <AgentsTable rows={pendingAgents} onAction={handleAgentAction} showActions />
       </section>
@@ -456,6 +512,75 @@ function RequestsTable({
       </table>
       </div>
     </>
+  )
+}
+
+function ClientsTable({ rows, editingId, editForm, setEditForm, onStartEdit, onCancelEdit, onSaveEdit, onDelete }) {
+  if (rows.length === 0) return <p className="admin-empty">No clients yet.</p>
+  return (
+    <div className="admin-table-wrap">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Client Ref</th><th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Registered</th><th>Expires</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            editingId === c.id ? (
+              <tr key={c.id} className="admin-editing-row">
+                <td>{c.client_ref}</td>
+                <td>
+                  <input value={editForm.full_name} onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))} />
+                </td>
+                <td>
+                  <input value={editForm.airtel_number} onChange={(e) => setEditForm((f) => ({ ...f, airtel_number: e.target.value }))} />
+                </td>
+                <td>
+                  <input value={editForm.package} onChange={(e) => setEditForm((f) => ({ ...f, package: e.target.value }))} />
+                </td>
+                <td>
+                  <select value={editForm.status} onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}>
+                    <option value="active">active</option>
+                    <option value="suspended">suspended</option>
+                    <option value="expired">expired</option>
+                  </select>
+                </td>
+                <td>{fmtDate(c.registered_at)}</td>
+                <td>{fmtDate(c.expires_at)}</td>
+                <td className="admin-actions">
+                  <button className="admin-icon-btn admin-approve" onClick={() => onSaveEdit(c.id)} aria-label="Save">
+                    <Check size={16} />
+                  </button>
+                  <button className="admin-icon-btn admin-reject" onClick={onCancelEdit} aria-label="Cancel">
+                    <X size={16} />
+                  </button>
+                </td>
+              </tr>
+            ) : (
+              <tr key={c.id}>
+                <td>{c.client_ref}</td>
+                <td>{c.full_name}</td>
+                <td>{c.airtel_number}</td>
+                <td>{c.package || '—'}</td>
+                <td><span className={`admin-badge admin-badge-${c.status}`}>{c.status}</span></td>
+                <td>{fmtDate(c.registered_at)}</td>
+                <td>{fmtDate(c.expires_at)}</td>
+                <td className="admin-actions">
+                  <button className="admin-icon-btn" onClick={() => onStartEdit(c)} aria-label="Edit">
+                    <Pencil size={16} />
+                  </button>
+                  <button className="admin-icon-btn admin-reject" onClick={() => onDelete(c.id)} aria-label="Delete">
+                    <Trash2 size={16} />
+                  </button>
+                </td>
+              </tr>
+            )
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -592,7 +717,7 @@ const adminStyles = `
     letter-spacing: 0.05em;
   }
   .admin-table tr:last-child td { border-bottom: none; }
-  .admin-table input[type="text"], .admin-table input:not([type="checkbox"]) {
+  .admin-table input[type="text"], .admin-table input:not([type="checkbox"]), .admin-table select {
     background: var(--ink);
     border: 1px solid var(--slate-line);
     border-radius: 6px;
@@ -610,8 +735,8 @@ const adminStyles = `
     text-transform: capitalize;
   }
   .admin-badge-pending { background: var(--indigo-soft); color: var(--signal); }
-  .admin-badge-done, .admin-badge-approved { background: rgba(16, 185, 129, 0.12); color: var(--live); }
-  .admin-badge-rejected { background: rgba(220, 38, 38, 0.1); color: #DC2626; }
+  .admin-badge-done, .admin-badge-approved, .admin-badge-active { background: rgba(16, 185, 129, 0.12); color: var(--live); }
+  .admin-badge-rejected, .admin-badge-suspended, .admin-badge-expired { background: rgba(220, 38, 38, 0.1); color: #DC2626; }
   .admin-actions { display: flex; gap: 8px; }
   .admin-icon-btn {
     width: 30px;
