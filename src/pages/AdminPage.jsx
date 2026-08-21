@@ -62,6 +62,13 @@ export default function AdminPage() {
   const [flyerCaption, setFlyerCaption] = useState('')
   const [flyerUploading, setFlyerUploading] = useState(false)
 
+  // Client PDF import
+  const [clientPdfFile, setClientPdfFile] = useState(null)
+  const [pdfPreviewRows, setPdfPreviewRows] = useState([])
+  const [pdfSkippedLines, setPdfSkippedLines] = useState([])
+  const [pdfUploading, setPdfUploading] = useState(false)
+  const [pdfImporting, setPdfImporting] = useState(false)
+
   const load = useCallback(async (t) => {
     setLoading(true)
     setError('')
@@ -227,6 +234,47 @@ export default function AdminPage() {
       load(token)
     } catch {
       setError('That action failed. Please try again.')
+    }
+  }
+
+  // ---- Client PDF import ----
+  const handlePdfPreview = async (e) => {
+    e.preventDefault()
+    if (!clientPdfFile) return
+    setPdfUploading(true)
+    setError('')
+    try {
+      const formData = new FormData()
+      formData.append('pdf', clientPdfFile)
+      const result = await apiUpload('/api/clients/import/preview', { formData, token })
+      setPdfPreviewRows(result.rows || [])
+      setPdfSkippedLines(result.skippedLines || [])
+    } catch {
+      setError('Could not read that PDF. Please check the file and try again.')
+    } finally {
+      setPdfUploading(false)
+    }
+  }
+
+  const handlePdfImport = async () => {
+    if (pdfPreviewRows.length === 0) return
+    setPdfImporting(true)
+    setError('')
+    try {
+      const result = await apiFetch('/api/clients/import/confirm', {
+        method: 'POST',
+        token,
+        body: { rows: pdfPreviewRows },
+      })
+      setClientPdfFile(null)
+      setPdfPreviewRows([])
+      setPdfSkippedLines([])
+      setError(result.failed?.length ? `${result.inserted.length} clients imported; ${result.failed.length} could not be imported.` : '')
+      load(token)
+    } catch {
+      setError('Client import failed. Please try again.')
+    } finally {
+      setPdfImporting(false)
     }
   }
 
@@ -404,6 +452,49 @@ export default function AdminPage() {
 
         <section id="clients">
           <h2>Clients ({clients.length})</h2>
+          <div className="pdf-import">
+            <h3>Import clients from PDF</h3>
+            <p>Upload a PDF, review the detected clients, then confirm the import.</p>
+            <form className="flyer-upload" onSubmit={handlePdfPreview}>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(e) => {
+                  setClientPdfFile(e.target.files?.[0] || null)
+                  setPdfPreviewRows([])
+                  setPdfSkippedLines([])
+                }}
+              />
+              <button className="btn btn-primary" type="submit" disabled={!clientPdfFile || pdfUploading}>
+                <Upload size={15} /> {pdfUploading ? 'Reading PDF…' : 'Upload PDF'}
+              </button>
+            </form>
+
+            {(pdfPreviewRows.length > 0 || pdfSkippedLines.length > 0) && (
+              <div className="pdf-preview">
+                <p>{pdfPreviewRows.length} client{pdfPreviewRows.length === 1 ? '' : 's'} found{pdfSkippedLines.length ? `; ${pdfSkippedLines.length} line${pdfSkippedLines.length === 1 ? '' : 's'} skipped.` : '.'}</p>
+                {pdfPreviewRows.length > 0 && (
+                  <>
+                    <div className="admin-table-wrap">
+                      <table className="admin-table">
+                        <thead><tr><th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Registered</th></tr></thead>
+                        <tbody>
+                          {pdfPreviewRows.map((row, index) => (
+                            <tr key={`${row.airtel_number}-${index}`}>
+                              <td>{row.full_name}</td><td>{row.airtel_number}</td><td>{row.package || '—'}</td><td>{row.status}</td><td>{row.registered_at || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button className="btn btn-primary pdf-confirm" type="button" onClick={handlePdfImport} disabled={pdfImporting}>
+                      <Upload size={15} /> {pdfImporting ? 'Importing…' : `Import ${pdfPreviewRows.length} client${pdfPreviewRows.length === 1 ? '' : 's'}`}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <ClientsTable
             rows={clients}
             editingId={editingClientId}
@@ -808,6 +899,17 @@ const adminStyles = `
     color: var(--paper);
   }
   .flyer-upload .btn { gap: 6px; }
+  .pdf-import {
+    background: var(--indigo);
+    border: 1px solid var(--slate-line);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  .pdf-import h3 { color: var(--paper); font-size: 14px; margin: 0 0 5px; }
+  .pdf-import > p, .pdf-preview > p { color: var(--slate); font-size: 13px; margin: 0 0 14px; }
+  .pdf-preview { margin-top: 4px; }
+  .pdf-confirm { margin-top: 14px; gap: 6px; }
   .btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
