@@ -1,33 +1,28 @@
 import { useState, useEffect } from 'react'
-import { Home, Signal, Package, Workflow, LifeBuoy, Menu, X, ArrowRight, Lock, ChevronLeft, ChevronRight } from 'lucide-react'
-import SignalBars from './SignalBars.jsx'
-import { useConnectModal } from '../context/ConnectModalContext.jsx'
+import { Image, ClipboardList, Users, UserCheck, ChevronLeft, ChevronRight, ExternalLink, Menu, X } from 'lucide-react'
 
 const COLLAPSE_KEY = 'ft_sidebar_collapsed'
 const EXPANDED_W = '240px'
 const COLLAPSED_W = '76px'
 
-// Absolute paths (/#home, not #home) so these links work correctly from
-// any page — including /admin, which has no #home section of its own to
-// scroll to. A bare #home only works when you're already on the homepage.
+// In-page anchors — AdminPage renders all sections on one route, so these
+// just scroll-jump rather than navigate (unlike the homepage sidebar, which
+// needs absolute /#section paths to work cross-page).
 const LINKS = [
-  { href: '/#home', label: 'Home', icon: Home },
-  { href: '/#check-status', label: 'Check Status', icon: Signal },
-  { href: '/#packages', label: 'Packages', icon: Package },
-  { href: '/#how', label: 'How It Works', icon: Workflow },
-  { href: '/#support', label: 'Support', icon: LifeBuoy },
+  { href: '#flyers', label: 'Flyers', icon: Image },
+  { href: '#requests', label: 'Requests', icon: ClipboardList },
+  { href: '#clients', label: 'Clients', icon: Users },
+  { href: '#agents', label: 'Agents', icon: UserCheck },
 ]
 
-export default function Sidebar() {
+export default function AdminSidebar() {
   const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(COLLAPSE_KEY) === 'true'
   )
-  const { open: openConnect } = useConnectModal()
 
-  // Drives --sidebar-w on the root element directly, so any other layout
-  // (e.g. main content using margin-left: var(--sidebar-w)) stays in sync
-  // on both the homepage and /admin without needing to touch those files.
+  // Same key + CSS var as the homepage Sidebar, so collapsed state and
+  // layout width stay consistent whichever one the user last touched.
   useEffect(() => {
     document.documentElement.style.setProperty(
       '--sidebar-w',
@@ -53,10 +48,9 @@ export default function Sidebar() {
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
 
-        <a href="/#home" className="sidebar-brand" onClick={() => setOpen(false)}>
-          <SignalBars variant="accent" />
-          {!collapsed && <span><strong>FRAJAN TECH</strong><br />UNLIMITED</span>}
-        </a>
+        <div className="sidebar-brand">
+          {collapsed ? <strong>FT</strong> : <span><strong>FRAJAN TECH</strong><br />ADMIN</span>}
+        </div>
 
         <nav className="sidebar-links">
           {LINKS.map((l) => {
@@ -70,16 +64,8 @@ export default function Sidebar() {
           })}
         </nav>
 
-        <button
-          className="btn btn-primary sidebar-cta"
-          onClick={() => { setOpen(false); openConnect('connection') }}
-          title={collapsed ? 'Get Connected' : undefined}
-        >
-          <ArrowRight size={16} /> {!collapsed && 'Get Connected'}
-        </button>
-
-        <a href="/admin" className="sidebar-admin-link" title={collapsed ? 'Admin' : undefined}>
-          <Lock size={13} /> {!collapsed && 'Admin'}
+        <a href="/" className="sidebar-admin-link" title={collapsed ? 'Back to site' : undefined}>
+          <ExternalLink size={13} /> {!collapsed && 'Back to site'}
         </a>
 
         <button className="sidebar-close" onClick={() => setOpen(false)} aria-label="Close menu">
@@ -125,23 +111,23 @@ export default function Sidebar() {
         }
         .sidebar-collapse-toggle:hover { color: var(--paper); border-color: var(--paper); }
         .sidebar-brand {
-          display: flex;
-          align-items: center;
-          gap: 12px;
           font-family: var(--font-display);
           font-size: 16px;
           line-height: 1.3;
           letter-spacing: 0.02em;
+          color: var(--accent);
           padding-bottom: 24px;
           margin-bottom: 24px;
           border-bottom: 1px solid var(--slate-line);
+          width: 100%;
+          text-align: center;
         }
-        .sidebar-brand strong { color: var(--accent); }
         .sidebar-links {
           display: flex;
           flex-direction: column;
           gap: 4px;
           flex: 1;
+          width: 100%;
         }
         .sidebar-links a {
           display: flex;
@@ -153,22 +139,9 @@ export default function Sidebar() {
           font-weight: 500;
           color: var(--slate);
         }
-        .sidebar-links a svg {
-          flex-shrink: 0;
-          opacity: 0.8;
-        }
-        .sidebar-links a:hover svg {
-          opacity: 1;
-        }
-        .sidebar-links a:hover {
-          background: var(--ink);
-          color: var(--paper);
-        }
-        .sidebar-cta {
-          justify-content: center;
-          gap: 8px;
-          margin-top: 20px;
-        }
+        .sidebar-links a svg { flex-shrink: 0; opacity: 0.8; }
+        .sidebar-links a:hover svg { opacity: 1; }
+        .sidebar-links a:hover { background: var(--ink); color: var(--paper); }
         .sidebar-admin-link {
           display: flex;
           align-items: center;
@@ -182,20 +155,12 @@ export default function Sidebar() {
           opacity: 0.6;
         }
         .sidebar-admin-link:hover { opacity: 1; color: var(--paper); }
-        .sidebar-close {
-          display: none;
-        }
-        .mobile-bar-toggle {
-          display: none;
-        }
-        .sidebar-overlay {
-          display: none;
-        }
+        .sidebar-close { display: none; }
+        .mobile-bar-toggle { display: none; }
+        .sidebar-overlay { display: none; }
 
         @media (max-width: 960px) {
-          .sidebar-collapse-toggle {
-            display: none;
-          }
+          .sidebar-collapse-toggle { display: none; }
           .mobile-bar-toggle {
             display: flex;
             align-items: center;

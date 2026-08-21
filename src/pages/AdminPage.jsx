@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Check, X, RefreshCw, Eye, EyeOff, Pencil, Trash2, Upload } from 'lucide-react'
 import { API_BASE } from '../config.js'
+import AdminSidebar from '../components/Sidebar.jsx'
 
 const TOKEN_KEY = 'ft_admin_token'
 
@@ -68,7 +69,7 @@ export default function AdminPage() {
       const [reqData, agentData, flyerData, clientData] = await Promise.all([
         apiFetch('/api/requests', { token: t }),
         apiFetch('/api/agents', { token: t }),
-        apiFetch('/api/flyers', { token: t }),
+        apiFetch('/api/flyers/all', { token: t }),
         apiFetch('/api/clients', { token: t }),
       ])
       setRequests(reqData)
@@ -220,6 +221,15 @@ export default function AdminPage() {
     }
   }
 
+  const handleFlyerToggle = async (f) => {
+    try {
+      await apiFetch(`/api/flyers/${f.id}`, { method: 'PATCH', token, body: { published: !f.published } })
+      load(token)
+    } catch {
+      setError('That action failed. Please try again.')
+    }
+  }
+
   // ---- Clients ----
   const startClientEdit = (row) => {
     setEditingClientId(row.id)
@@ -292,77 +302,72 @@ export default function AdminPage() {
   const otherAgents = agents.filter((a) => a.status !== 'pending')
 
   return (
-    <div className="admin-page">
-      <header className="admin-header">
-        <h1>Frajan Tech — Admin</h1>
-        <button className="btn btn-ghost" onClick={() => load(token)} disabled={loading}>
-          <RefreshCw size={15} /> {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
-      </header>
-
-      {error && <p className="admin-error">{error}</p>}
-
-      <section>
-        <h2>Flyers</h2>
-        <form className="flyer-upload" onSubmit={handleFlyerUpload}>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setFlyerFile(e.target.files?.[0] || null)}
-          />
-          <input
-            type="text"
-            placeholder="Caption (optional)"
-            value={flyerCaption}
-            onChange={(e) => setFlyerCaption(e.target.value)}
-          />
-          <button className="btn btn-primary" type="submit" disabled={!flyerFile || flyerUploading}>
-            <Upload size={15} /> {flyerUploading ? 'Uploading…' : 'Upload flyer'}
+    <>
+      <AdminSidebar />
+      <div className="admin-page admin-page-with-sidebar">
+        <header className="admin-header">
+          <h1>Frajan Tech — Admin</h1>
+          <button className="btn btn-ghost" onClick={() => load(token)} disabled={loading}>
+            <RefreshCw size={15} /> {loading ? 'Refreshing…' : 'Refresh'}
           </button>
-        </form>
+        </header>
 
-        {flyers.length === 0 ? (
-          <p className="admin-empty">No flyers yet.</p>
-        ) : (
-          <div className="flyer-grid">
-            {flyers.map((f) => (
-              <div className="flyer-card" key={f.id}>
-                <img src={f.image_url} alt={f.caption || 'Flyer'} />
-                {f.caption && <p>{f.caption}</p>}
-                <button className="admin-icon-btn admin-reject" onClick={() => handleFlyerDelete(f.id)} aria-label="Delete flyer">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+        {error && <p className="admin-error">{error}</p>}
 
-      <section>
-        <h2>Pending requests ({pendingRequests.length})</h2>
-        <RequestsTable
-          rows={pendingRequests}
-          onAction={handleRequestAction}
-          showActions
-          selectedIds={selectedIds}
-          onToggleOne={toggleSelectOne}
-          onToggleAll={toggleSelectAll}
-          onDeleteOne={handleDeleteOne}
-          onBulkDelete={handleBulkDelete}
-          editingId={editingId}
-          editForm={editForm}
-          setEditForm={setEditForm}
-          onStartEdit={startEdit}
-          onCancelEdit={cancelEdit}
-          onSaveEdit={saveEdit}
-        />
-      </section>
+        <section id="flyers">
+          <h2>Flyers</h2>
+          <form className="flyer-upload" onSubmit={handleFlyerUpload}>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setFlyerFile(e.target.files?.[0] || null)}
+            />
+            <input
+              type="text"
+              placeholder="Caption (optional)"
+              value={flyerCaption}
+              onChange={(e) => setFlyerCaption(e.target.value)}
+            />
+            <button className="btn btn-primary" type="submit" disabled={!flyerFile || flyerUploading}>
+              <Upload size={15} /> {flyerUploading ? 'Uploading…' : 'Upload flyer'}
+            </button>
+          </form>
 
-      {otherRequests.length > 0 && (
-        <section>
-          <h2>Past requests</h2>
+          {flyers.length === 0 ? (
+            <p className="admin-empty">No flyers yet.</p>
+          ) : (
+            <div className="flyer-grid">
+              {flyers.map((f) => (
+                <div className="flyer-card" key={f.id}>
+                  <img src={f.image_url} alt={f.caption || 'Flyer'} />
+                  {f.caption && <p>{f.caption}</p>}
+                  <span className={`admin-badge ${f.published ? 'admin-badge-active' : 'admin-badge-suspended'}`}>
+                    {f.published ? 'Published' : 'Unpublished'}
+                  </span>
+                  <div className="flyer-card-actions">
+                    <button
+                      className="admin-icon-btn"
+                      onClick={() => handleFlyerToggle(f)}
+                      aria-label={f.published ? 'Unpublish flyer' : 'Publish flyer'}
+                    >
+                      {f.published ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                    <button className="admin-icon-btn admin-reject" onClick={() => handleFlyerDelete(f.id)} aria-label="Delete flyer">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section id="requests">
+          <h2>Pending requests ({pendingRequests.length})</h2>
           <RequestsTable
-            rows={otherRequests}
+            rows={pendingRequests}
+            onAction={handleRequestAction}
+            showActions
             selectedIds={selectedIds}
             onToggleOne={toggleSelectOne}
             onToggleAll={toggleSelectAll}
@@ -376,36 +381,56 @@ export default function AdminPage() {
             onSaveEdit={saveEdit}
           />
         </section>
-      )}
 
-      <section>
-        <h2>Clients ({clients.length})</h2>
-        <ClientsTable
-          rows={clients}
-          editingId={editingClientId}
-          editForm={clientEditForm}
-          setEditForm={setClientEditForm}
-          onStartEdit={startClientEdit}
-          onCancelEdit={cancelClientEdit}
-          onSaveEdit={saveClientEdit}
-          onDelete={handleClientDelete}
-        />
-      </section>
+        {otherRequests.length > 0 && (
+          <section>
+            <h2>Past requests</h2>
+            <RequestsTable
+              rows={otherRequests}
+              selectedIds={selectedIds}
+              onToggleOne={toggleSelectOne}
+              onToggleAll={toggleSelectAll}
+              onDeleteOne={handleDeleteOne}
+              onBulkDelete={handleBulkDelete}
+              editingId={editingId}
+              editForm={editForm}
+              setEditForm={setEditForm}
+              onStartEdit={startEdit}
+              onCancelEdit={cancelEdit}
+              onSaveEdit={saveEdit}
+            />
+          </section>
+        )}
 
-      <section>
-        <h2>Pending agent applications ({pendingAgents.length})</h2>
-        <AgentsTable rows={pendingAgents} onAction={handleAgentAction} showActions />
-      </section>
-
-      {otherAgents.length > 0 && (
-        <section>
-          <h2>Past agent applications</h2>
-          <AgentsTable rows={otherAgents} />
+        <section id="clients">
+          <h2>Clients ({clients.length})</h2>
+          <ClientsTable
+            rows={clients}
+            editingId={editingClientId}
+            editForm={clientEditForm}
+            setEditForm={setClientEditForm}
+            onStartEdit={startClientEdit}
+            onCancelEdit={cancelClientEdit}
+            onSaveEdit={saveClientEdit}
+            onDelete={handleClientDelete}
+          />
         </section>
-      )}
 
-      <style>{adminStyles}</style>
-    </div>
+        <section id="agents">
+          <h2>Pending agent applications ({pendingAgents.length})</h2>
+          <AgentsTable rows={pendingAgents} onAction={handleAgentAction} showActions />
+        </section>
+
+        {otherAgents.length > 0 && (
+          <section>
+            <h2>Past agent applications</h2>
+            <AgentsTable rows={otherAgents} />
+          </section>
+        )}
+
+        <style>{adminStyles}</style>
+      </div>
+    </>
   )
 }
 
@@ -677,6 +702,13 @@ const adminStyles = `
     background: var(--ink);
     padding: 40px 32px 80px;
   }
+  .admin-page-with-sidebar {
+    margin-left: var(--sidebar-w);
+    transition: margin-left 0.18s ease;
+  }
+  @media (max-width: 960px) {
+    .admin-page-with-sidebar { margin-left: 0; }
+  }
   .admin-header {
     display: flex;
     align-items: center;
@@ -802,7 +834,9 @@ const adminStyles = `
     border-radius: 8px;
   }
   .flyer-card p { font-size: 12px; color: var(--slate); margin: 0; }
-  .flyer-card .admin-icon-btn {
+  .flyer-card-actions {
+    display: flex;
+    gap: 8px;
     align-self: flex-end;
   }
 `
