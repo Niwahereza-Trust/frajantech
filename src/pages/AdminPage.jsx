@@ -431,85 +431,85 @@ function RequestsTable({
         </div>
       )}
       <div className="admin-table-wrap">
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>
-              <input type="checkbox" checked={allSelected} onChange={() => onToggleAll(ids)} aria-label="Select all" />
-            </th>
-            <th>Ref</th><th>Type</th><th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Created</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            editingId === r.id ? (
-              <tr key={r.id} className="admin-editing-row">
-                <td></td>
-                <td>{r.reference_code}</td>
-                <td>
-                  <input value={editForm.type} onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))} />
-                </td>
-                <td>
-                  <input value={editForm.fullName} onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))} />
-                </td>
-                <td>
-                  <input value={editForm.airtelNumber} onChange={(e) => setEditForm((f) => ({ ...f, airtelNumber: e.target.value }))} />
-                </td>
-                <td>
-                  <input value={editForm.package} onChange={(e) => setEditForm((f) => ({ ...f, package: e.target.value }))} />
-                </td>
-                <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
-                <td>{fmtDate(r.created_at)}</td>
-                <td className="admin-actions">
-                  <button className="admin-icon-btn admin-approve" onClick={() => onSaveEdit(r.id)} aria-label="Save">
-                    <Check size={16} />
-                  </button>
-                  <button className="admin-icon-btn admin-reject" onClick={onCancelEdit} aria-label="Cancel">
-                    <X size={16} />
-                  </button>
-                </td>
-              </tr>
-            ) : (
-              <tr key={r.id}>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(r.id)}
-                    onChange={() => onToggleOne(r.id)}
-                    aria-label={`Select ${r.full_name}`}
-                  />
-                </td>
-                <td>{r.reference_code}</td>
-                <td>{r.type}</td>
-                <td>{r.full_name}</td>
-                <td>{r.airtel_number}</td>
-                <td>{r.package || '—'}</td>
-                <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
-                <td>{fmtDate(r.created_at)}</td>
-                <td className="admin-actions">
-                  {showActions && (
-                    <>
-                      <button className="admin-icon-btn admin-approve" onClick={() => onAction(r.id, 'approve')} aria-label="Approve">
-                        <Check size={16} />
-                      </button>
-                      <button className="admin-icon-btn admin-reject" onClick={() => onAction(r.id, 'reject')} aria-label="Reject">
-                        <X size={16} />
-                      </button>
-                    </>
-                  )}
-                  <button className="admin-icon-btn" onClick={() => onStartEdit(r)} aria-label="Edit">
-                    <Pencil size={16} />
-                  </button>
-                  <button className="admin-icon-btn admin-reject" onClick={() => onDeleteOne(r.id)} aria-label="Delete">
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            )
-          ))}
-        </tbody>
-      </table>
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>
+                <input type="checkbox" checked={allSelected} onChange={() => onToggleAll(ids)} aria-label="Select all" />
+              </th>
+              <th>Ref</th><th>Type</th><th>Name</th><th>Airtel</th><th>Package</th><th>Status</th><th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              editingId === r.id ? (
+                <tr key={r.id} className="admin-editing-row">
+                  <td></td>
+                  <td>{r.reference_code}</td>
+                  <td>
+                    <input value={editForm.type} onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))} />
+                  </td>
+                  <td>
+                    <input value={editForm.fullName} onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))} />
+                  </td>
+                  <td>
+                    <input value={editForm.airtelNumber} onChange={(e) => setEditForm((f) => ({ ...f, airtelNumber: e.target.value }))} />
+                  </td>
+                  <td>
+                    <input value={editForm.package} onChange={(e) => setEditForm((f) => ({ ...f, package: e.target.value }))} />
+                  </td>
+                  <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
+                  <td>{fmtDate(r.created_at)}</td>
+                  <td className="admin-actions">
+                    <button className="admin-icon-btn admin-approve" onClick={() => onSaveEdit(r.id)} aria-label="Save">
+                      <Check size={16} />
+                    </button>
+                    <button className="admin-icon-btn admin-reject" onClick={onCancelEdit} aria-label="Cancel">
+                      <X size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={r.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => onToggleOne(r.id)}
+                      aria-label={`Select ${r.full_name}`}
+                    />
+                  </td>
+                  <td>{r.reference_code}</td>
+                  <td>{r.type}</td>
+                  <td>{r.full_name}</td>
+                  <td>{r.airtel_number}</td>
+                  <td>{r.package || '—'}</td>
+                  <td><span className={`admin-badge admin-badge-${r.status}`}>{r.status}</span></td>
+                  <td>{fmtDate(r.created_at)}</td>
+                  <td className="admin-actions">
+                    {showActions && (
+                      <>
+                        <button className="admin-icon-btn admin-approve" onClick={() => onAction(r.id, 'approve')} aria-label="Approve">
+                          <Check size={16} />
+                        </button>
+                        <button className="admin-icon-btn admin-reject" onClick={() => onAction(r.id, 'reject')} aria-label="Reject">
+                          <X size={16} />
+                        </button>
+                      </>
+                    )}
+                    <button className="admin-icon-btn" onClick={() => onStartEdit(r)} aria-label="Edit">
+                      <Pencil size={16} />
+                    </button>
+                    <button className="admin-icon-btn admin-reject" onClick={() => onDeleteOne(r.id)} aria-label="Delete">
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   )
@@ -588,36 +588,36 @@ function AgentsTable({ rows, onAction, showActions }) {
   if (rows.length === 0) return <p className="admin-empty">Nothing here.</p>
   return (
     <div className="admin-table-wrap">
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>Name</th><th>Phone</th><th>Email</th><th>District</th><th>Status</th><th>Applied</th>
-          {showActions && <th></th>}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((a) => (
-          <tr key={a.id}>
-            <td>{a.full_name}</td>
-            <td>{a.phone_number}</td>
-            <td>{a.email}</td>
-            <td>{a.district || '—'}</td>
-            <td><span className={`admin-badge admin-badge-${a.status}`}>{a.status}</span></td>
-            <td>{fmtDate(a.created_at)}</td>
-            {showActions && (
-              <td className="admin-actions">
-                <button className="admin-icon-btn admin-approve" onClick={() => onAction(a.id, 'approve')} aria-label="Approve">
-                  <Check size={16} />
-                </button>
-                <button className="admin-icon-btn admin-reject" onClick={() => onAction(a.id, 'reject')} aria-label="Reject">
-                  <X size={16} />
-                </button>
-              </td>
-            )}
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Phone</th><th>Email</th><th>District</th><th>Status</th><th>Applied</th>
+            {showActions && <th></th>}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((a) => (
+            <tr key={a.id}>
+              <td>{a.full_name}</td>
+              <td>{a.phone_number}</td>
+              <td>{a.email}</td>
+              <td>{a.district || '—'}</td>
+              <td><span className={`admin-badge admin-badge-${a.status}`}>{a.status}</span></td>
+              <td>{fmtDate(a.created_at)}</td>
+              {showActions && (
+                <td className="admin-actions">
+                  <button className="admin-icon-btn admin-approve" onClick={() => onAction(a.id, 'approve')} aria-label="Approve">
+                    <Check size={16} />
+                  </button>
+                  <button className="admin-icon-btn admin-reject" onClick={() => onAction(a.id, 'reject')} aria-label="Reject">
+                    <X size={16} />
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -776,6 +776,10 @@ const adminStyles = `
     color: var(--paper);
   }
   .flyer-upload .btn { gap: 6px; }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
   .flyer-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
